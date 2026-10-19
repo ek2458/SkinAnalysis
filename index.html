@@ -59,6 +59,13 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .opt input:checked + span{background:var(--accent-soft);border-color:var(--accent);color:var(--fg);font-weight:600}
 .drop{border:1.5px dashed var(--line);border-radius:14px;aspect-ratio:3/4;max-width:100%;display:grid;place-items:center;text-align:center;color:var(--muted);position:relative;overflow:hidden;background:var(--bg)}
 .drop video{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;transform:scaleX(-1)}
+.drop #mesh{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);pointer-events:none}
+.drop .guide{transition:border-color .2s, box-shadow .2s}
+.drop .guide.ok{border-color:#7fe3d6;box-shadow:0 0 0 999px rgba(0,0,0,.18),0 0 28px #7fe3d6}
+.camchip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(10,20,19,.72);color:#fff;padding:6px 14px;border-radius:999px;font-size:13px;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+.count{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--f-mono);font-size:84px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.5);pointer-events:none}
+.scanbox{position:relative;aspect-ratio:3/4;width:100%;max-width:340px;margin:0 auto;border-radius:14px;overflow:hidden;background:#0b1413}
+.scanbox canvas{width:100%;height:100%;display:block;object-fit:cover}
 .drop img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
 .drop .guide{position:absolute;inset:12% 20% 14%;border:2px solid rgba(255,255,255,.75);border-radius:50% 50% 46% 46%;pointer-events:none;box-shadow:0 0 0 999px rgba(0,0,0,.18)}
 .tips{font-size:13px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;padding-left:18px;margin:0}
@@ -155,7 +162,10 @@ ol.routine li::before{content:counter(s);font-family:var(--f-mono);font-size:12p
       <span id="dropText">카메라 켜기를 누르면 브라우저가 카메라 사용 허용을 물어봐요<br><span class="note">사진을 끌어다 놓거나 ⌘V로 붙여넣어도 돼요</span></span>
       <video id="cam" playsinline muted hidden></video>
       <img id="preview" alt="선택한 셀피 미리보기" hidden>
+      <canvas id="mesh" hidden></canvas>
       <span class="guide" id="guide" hidden></span>
+      <span class="camchip" id="camChip" hidden></span>
+      <span class="count" id="count" hidden></span>
     </div>
     <div class="row">
       <button type="button" id="camBtn" style="flex:1">카메라 켜기</button>
@@ -183,6 +193,7 @@ ol.routine li::before{content:counter(s);font-family:var(--f-mono);font-size:12p
   <section id="s-load" class="card stack" hidden>
     <span class="eyebrow">3 / 3단계 · 분석 중</span>
     <h2 id="loadTitle">피부를 살펴보는 중이에요</h2>
+    <div class="scanbox"><canvas id="scanCanvas"></canvas><span class="camchip" id="scanChip">피부 영역 찾는 중</span></div>
     <div class="scan"><i></i></div>
     <p class="lead" id="loadText">잠시만 기다려 주세요.</p>
     <button class="ghost" id="stopBtn">취소</button>
@@ -255,7 +266,7 @@ const setPhoto = async f => {
     try { f = await toJpeg(f); } catch { f = null; }
   }
   if (!f || !/^image\/(jpeg|png|webp)$/.test(f.type)) { $("photoErr").textContent = "이 사진 형식은 열 수 없어요. JPG, PNG, WebP 사진으로 올려 주세요."; $("photoErr").hidden = false; return; }
-  photo = f; if (previewUrl) URL.revokeObjectURL(previewUrl);
+  photo = f; photoLm = null; if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = URL.createObjectURL(f);
   $("preview").src = previewUrl; $("preview").hidden = false; $("guide").hidden = false; $("dropText").hidden = true;
   $("analyzeBtn").disabled = false;
@@ -282,7 +293,7 @@ function boxBlur(src, W, H, r) {
   }
   return out;
 }
-async function localAnalyze(blob, a) {
+async function localAnalyze(blob, a, lm) {
   const img = await createImageBitmap(blob);
   let sw = img.width, sh = img.height, sx = 0, sy = 0;
   if (sw / sh > 3 / 4) { const nw = sh * 3 / 4; sx = (sw - nw) / 2; sw = nw; } else { const nh = sw * 4 / 3; sy = (sh - nh) / 2; sh = nh; }
@@ -290,14 +301,24 @@ async function localAnalyze(blob, a) {
   const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
   const d = g.getImageData(0, 0, W, H).data;
   const L = new Float32Array(W * H), RN = new Float32Array(W * H), skin = new Uint8Array(W * H);
-  const cx = W / 2, cy = H * 0.49, rx = W * 0.30, ry = H * 0.37;
+  let cx = W / 2, cy = H * 0.49, rx = W * 0.30, ry = H * 0.37, mask = null;
+  if (lm) {
+    const mc = document.createElement("canvas"); mc.width = W; mc.height = H; const mg = mc.getContext("2d");
+    const P = k => [(lm[k].x * img.width - sx) / sw * W, (lm[k].y * img.height - sy) / sh * H];
+    const poly = (idx) => { mg.beginPath(); idx.forEach((k, i) => { const [x, y] = P(k); i ? mg.lineTo(x, y) : mg.moveTo(x, y); }); mg.closePath(); };
+    mg.fillStyle = "#fff"; poly(OVAL_IDX); mg.fill();
+    mg.fillStyle = "#000"; mg.strokeStyle = "#000"; mg.lineWidth = 6; for (const h of HOLES) { poly(h); mg.fill(); mg.stroke(); }
+    const md = mg.getImageData(0, 0, W, H).data; mask = new Uint8Array(W * H); for (let i = 0; i < W * H; i++) mask[i] = md[i * 4] > 128;
+    const xs = OVAL_IDX.map(k => P(k)[0]), ys = OVAL_IDX.map(k => P(k)[1]);
+    cx = (Math.min(...xs) + Math.max(...xs)) / 2; cy = (Math.min(...ys) + Math.max(...ys)) / 2; rx = (Math.max(...xs) - Math.min(...xs)) / 2; ry = (Math.max(...ys) - Math.min(...ys)) / 2;
+  }
   let inEll = 0;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x, r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2];
     L[i] = 0.299 * r + 0.587 * gg + 0.114 * b;
     RN[i] = (r - gg) / (r + gg + b + 1);
     const u = (x - cx) / rx, v = (y - cy) / ry;
-    if (u * u + v * v > 1) continue;
+    if (mask ? !mask[i] : u * u + v * v > 1) continue;
     inEll++;
     const cb = 128 - 0.168736 * r - 0.331264 * gg + 0.5 * b, cr = 128 + 0.5 * r - 0.418688 * gg - 0.081312 * b;
     if (cb >= 77 && cb <= 130 && cr >= 130 && cr <= 178 && L[i] > 40) skin[i] = 1;
@@ -396,24 +417,131 @@ async function localAnalyze(blob, a) {
   };
 }
 
-// webcam
-let stream = null;
-const stopCam = () => { stream?.getTracks().forEach(t => t.stop()); stream = null; $("cam").hidden = true; $("camBtn").textContent = "카메라 켜기"; };
+// analysis scan animation
+const ZONES = [[151,"이마 · 주름"],[159,"눈가 · 잔주름"],[50,"볼 · 모공"],[280,"볼 · 붉은기"],[4,"코 · 유분"],[199,"턱 · 피부결"]];
+function playScan(blob, lm) {
+  const c = $("scanCanvas"), g = c.getContext("2d"); let img = null, raf2 = 0, alive = true; const t0 = performance.now();
+  createImageBitmap(blob).then(b => { img = b; const k = Math.min(1, 720 / b.width); c.width = b.width * k; c.height = b.height * k; });
+  const acc = "#7fe3d6";
+  const frame = () => {
+    if (!alive) return;
+    const t = performance.now() - t0;
+    if (img) {
+      const W = c.width, H = c.height;
+      g.drawImage(img, 0, 0, W, H); g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(0, 0, W, H);
+      if (lm) {
+        drawFace(g, lm, W, H, t, Math.min(1, t / 600));
+        const zi = Math.floor(t / 800) % ZONES.length, [k, label] = ZONES[zi], p = lm[k], ph = (t % 800) / 800;
+        $("scanChip").textContent = label + " 측정 중";
+        g.strokeStyle = acc; g.lineWidth = Math.max(2, W / 260);
+        const R = W * (0.05 + 0.03 * ph); g.globalAlpha = 1 - ph * 0.6;
+        g.beginPath(); g.arc(p.x * W, p.y * H, R, 0, 7); g.stroke();
+        g.beginPath(); g.moveTo(p.x * W - R * 1.5, p.y * H); g.lineTo(p.x * W - R * .6, p.y * H); g.moveTo(p.x * W + R * .6, p.y * H); g.lineTo(p.x * W + R * 1.5, p.y * H);
+        g.moveTo(p.x * W, p.y * H - R * 1.5); g.lineTo(p.x * W, p.y * H - R * .6); g.moveTo(p.x * W, p.y * H + R * .6); g.lineTo(p.x * W, p.y * H + R * 1.5); g.stroke();
+        g.globalAlpha = 1;
+      } else {
+        const sy = ((t / 1600) % 1) * H, grd = g.createLinearGradient(0, sy - 30, 0, sy + 30);
+        grd.addColorStop(0, "rgba(255,255,255,0)"); grd.addColorStop(.5, "rgba(255,255,255,.35)"); grd.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = grd; g.fillRect(0, sy - 30, W, 60);
+        $("scanChip").textContent = ["피부 영역 찾는 중", "피부결 살펴보는 중", "색소와 붉은기 측정 중", "유분 측정 중"][Math.floor(t / 900) % 4];
+      }
+    }
+    raf2 = requestAnimationFrame(frame);
+  };
+  raf2 = requestAnimationFrame(frame);
+  return () => { alive = false; cancelAnimationFrame(raf2); };
+}
+
+// webcam + live face scan
+const OVAL_IDX = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+const HOLES = [[33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246],[263,249,390,373,374,380,381,382,362,398,384,385,386,387,388,466],
+  [61,146,91,181,84,17,314,405,321,375,291,409,270,269,267,0,37,39,40,185],[70,63,105,66,107,55,65,52,53,46],[300,293,334,296,336,285,295,282,283,276]];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || "#6cc2b9";
+let stream = null, raf = 0, lastLm = null, goodSince = 0, countTimer = null, photoLm = null, fsLoading = false;
+const chip = t => { const c = $("camChip"); c.textContent = t; c.hidden = !t; };
+const cancelCount = () => { clearInterval(countTimer); countTimer = null; $("count").hidden = true; };
+const stopCam = () => {
+  cancelAnimationFrame(raf); cancelCount();
+  stream?.getTracks().forEach(t => t.stop()); stream = null;
+  $("cam").hidden = true; $("mesh").hidden = true; chip(""); $("guide").classList.remove("ok");
+  $("camBtn").textContent = "카메라 켜기";
+};
+function drawFace(g, pts, W, H, t, alpha = 1) {
+  if (!pts) return;
+  const FS = window.FaceScan, acc = "#7fe3d6";
+  let minY = 1, maxY = 0, minX = 1, maxX = 0;
+  for (const p of pts) { if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; }
+  // mesh
+  if (FS?.TESS) {
+    g.beginPath(); g.lineWidth = Math.max(0.6, W / 1100); g.strokeStyle = `rgba(255,255,255,${0.16 * alpha})`;
+    for (const c of FS.TESS) { const a = pts[c.start], b = pts[c.end]; g.moveTo(a.x * W, a.y * H); g.lineTo(b.x * W, b.y * H); }
+    g.stroke();
+  }
+  // contour
+  g.beginPath(); OVAL_IDX.forEach((k, i) => { const p = pts[k]; i ? g.lineTo(p.x * W, p.y * H) : g.moveTo(p.x * W, p.y * H); }); g.closePath();
+  g.lineWidth = Math.max(1.5, W / 420); g.strokeStyle = acc; g.globalAlpha = 0.9 * alpha; g.stroke(); g.globalAlpha = 1;
+  // scan band
+  const ph = (t / 1700) % 1, sy = minY + (maxY - minY) * (ph < .5 ? ph * 2 : 2 - ph * 2), band = (maxY - minY) * 0.07;
+  const grd = g.createLinearGradient(0, (sy - band) * H, 0, (sy + band) * H);
+  grd.addColorStop(0, "rgba(255,255,255,0)"); grd.addColorStop(.5, `rgba(255,255,255,${0.22 * alpha})`); grd.addColorStop(1, "rgba(255,255,255,0)");
+  g.save(); g.clip(); g.fillStyle = grd; g.fillRect(minX * W, (sy - band) * H, (maxX - minX) * W, band * 2 * H); g.restore();
+  // dots near the band
+  g.fillStyle = acc; const r = Math.max(1.2, W / 500);
+  for (let i = 0; i < pts.length; i += 2) { const p = pts[i], dd = Math.abs(p.y - sy) / band; if (dd < 1) { g.globalAlpha = (1 - dd) * alpha; g.beginPath(); g.arc(p.x * W, p.y * H, r, 0, 7); g.fill(); } }
+  g.globalAlpha = 1;
+}
+function faceStatus(pts, v) {
+  if (!pts) return "얼굴이 보이지 않아요. 카메라를 정면으로 봐 주세요";
+  const ar = v.videoWidth / v.videoHeight;
+  const visW = ar > 3 / 4 ? (3 / 4) / ar : 1, visH = ar > 3 / 4 ? 1 : ar / (3 / 4), x0 = (1 - visW) / 2, y0 = (1 - visH) / 2;
+  let a = 1, b = 0, c = 1, d = 0; for (const p of pts) { a = Math.min(a, p.x); b = Math.max(b, p.x); c = Math.min(c, p.y); d = Math.max(d, p.y); }
+  const fw = (b - a) / visW, fx = ((a + b) / 2 - x0) / visW, fy = ((c + d) / 2 - y0) / visH;
+  if (fw < 0.45) return "조금 더 가까이 와 주세요";
+  if (fw > 0.8) return "조금 뒤로 물러나 주세요";
+  if (Math.abs(fx - .5) > .1 || Math.abs(fy - .5) > .12) return "얼굴을 타원 가운데에 맞춰 주세요";
+  const yaw = (pts[1].x - (pts[234].x + pts[454].x) / 2) / (pts[454].x - pts[234].x);
+  if (Math.abs(yaw) > .09) return "고개를 돌리지 말고 정면을 봐 주세요";
+  return "";
+}
+function camLoop() {
+  if (!stream) return;
+  const v = $("cam"), c = $("mesh"), FS = window.FaceScan;
+  if (FS && !fsLoading) { fsLoading = true; chip("얼굴 인식 준비 중…"); FS.load().catch(() => { FS.failed = true; chip("촬영하기를 눌러 주세요"); }); }
+  if (FS?.ready && v.readyState >= 2) {
+    if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; }
+    let pts = null; try { pts = FS.detect(v, performance.now()); } catch {}
+    lastLm = pts;
+    const g = c.getContext("2d"); g.clearRect(0, 0, c.width, c.height); c.hidden = false;
+    drawFace(g, pts, c.width, c.height, performance.now());
+    const msg = faceStatus(pts, v), ok = !msg;
+    $("guide").classList.toggle("ok", ok);
+    if (ok) {
+      if (!goodSince) goodSince = performance.now();
+      if (!countTimer && performance.now() - goodSince > 700) {
+        let n = 3; $("count").textContent = n; $("count").hidden = false; chip("좋아요, 그대로 있어 주세요");
+        countTimer = setInterval(() => { n--; if (n > 0) $("count").textContent = n; else { cancelCount(); capturePhoto(); } }, 800);
+      } else if (!countTimer) chip("좋아요, 그대로 있어 주세요");
+    } else { goodSince = 0; cancelCount(); chip(msg); }
+  } else if (!FS) chip("촬영하기를 눌러 주세요");
+  raf = requestAnimationFrame(camLoop);
+}
+function capturePhoto() {
+  const v = $("cam"); if (!stream || !v.videoWidth) return;
+  const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+  const g = c.getContext("2d"); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(v, 0, 0);
+  const lm = lastLm ? lastLm.map(p => ({ x: 1 - p.x, y: p.y })) : null;
+  c.toBlob(b => { stopCam(); setPhoto(b).then(() => { photoLm = lm; }); }, "image/jpeg", 0.92);
+}
 $("camBtn").onclick = async () => {
   $("photoErr").hidden = true;
-  if (stream) { // capture
-    const v = $("cam"), c = document.createElement("canvas");
-    c.width = v.videoWidth; c.height = v.videoHeight;
-    const g = c.getContext("2d"); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(v, 0, 0);
-    c.toBlob(b => { stopCam(); setPhoto(b); }, "image/jpeg", 0.92);
-    return;
-  }
+  if (stream) { cancelCount(); capturePhoto(); return; }
   if (!navigator.mediaDevices?.getUserMedia) { $("photoErr").textContent = "이 브라우저에서는 카메라를 쓸 수 없어요. Chrome이나 Safari 최신 버전으로 열어 주세요."; $("photoErr").hidden = false; return; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
     const v = $("cam"); v.srcObject = stream; await v.play();
     v.hidden = false; $("preview").hidden = true; $("dropText").hidden = true; $("guide").hidden = false;
-    $("camBtn").textContent = "촬영하기";
+    $("camBtn").textContent = "촬영하기"; goodSince = 0;
+    raf = requestAnimationFrame(camLoop);
   } catch (e) {
     stream = null;
     const framed = (() => { try { return window.self !== window.top; } catch { return true; } })();
@@ -467,7 +595,7 @@ async function analyzeWithApi(prompt, blob, signal) {
 
 // sampling
 let ctl = null;
-$("stopBtn").onclick = () => ctl?.abort();
+$("stopBtn").onclick = () => { ctl?.abort(); show("s-photo"); };
 
 const ERR = {
   not_granted: "Claude 사용이 허용되지 않아 분석할 수 없어요. 허용하면 다시 시도할 수 있습니다.",
@@ -483,17 +611,20 @@ const ERR = {
 $("analyzeBtn").onclick = async () => {
   show("s-load");
   ctl = new AbortController();
+  const stopAnim = playScan(photo, photoLm), t0 = Date.now();
   try {
     const r = $("apiKey").value.trim()
       ? await analyzeWithApi(buildPrompt(answers), photo, ctl.signal)
-      : await new Promise(res => setTimeout(res, 1200)).then(() => localAnalyze(photo, answers));
+      : await new Promise(res => setTimeout(res, 4200)).then(() => localAnalyze(photo, answers, photoLm));
+    stopAnim();
+    if (ctl.signal.aborted) return;
     if (!r || r.valid === false) {
       show("s-photo"); $("photoErr").textContent = (r && r.reason) || "얼굴을 잘 찾지 못했어요. 밝은 곳에서 정면으로 다시 찍어 주세요."; $("photoErr").hidden = false; return;
     }
     saveHist(r); renderHist();
     renderReport(r, answers, false);
   } catch (e) {
-    show("s-photo");
+    stopAnim(); show("s-photo");
     if (e.code === "cancelled" || e.name === "AbortError") return;
     $("photoErr").textContent = ERR[e.code] || "분석 중 연결이 끊겼어요. 다시 시도해 주세요.";
     $("photoErr").hidden = false;
@@ -655,4 +786,17 @@ const SAMPLE = {
 })();
 </script>
 
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+let lm = null, loading = null;
+const make = async (fs, delegate) => FaceLandmarker.createFromOptions(fs, { baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate }, runningMode: "VIDEO", numFaces: 1 });
+window.FaceScan = {
+  TESS: FaceLandmarker.FACE_LANDMARKS_TESSELATION, ready: false,
+  load() { return loading ||= (async () => {
+    const fs = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    try { lm = await make(fs, "GPU"); } catch { lm = await make(fs, "CPU"); }
+    window.FaceScan.ready = true; return lm; })(); },
+  detect(video, t) { return lm ? (lm.detectForVideo(video, t).faceLandmarks[0] || null) : null; }
+};
+</script>
 </body></html>
