@@ -63,6 +63,8 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .drop .guide{transition:border-color .2s, box-shadow .2s}
 .drop .guide.ok{border-color:#7fe3d6;box-shadow:0 0 0 999px rgba(0,0,0,.18),0 0 28px #7fe3d6}
 .camchip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(10,20,19,.72);color:#fff;padding:6px 14px;border-radius:999px;font-size:13px;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+#hud{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.camtip{position:absolute;left:10px;right:10px;top:12%;background:rgba(10,20,19,.82);color:#fff;padding:8px 12px;border-radius:10px;font-size:12.5px;line-height:1.45;text-align:center}
 .count{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--f-mono);font-size:84px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.5);pointer-events:none}
 .scanbox{position:relative;aspect-ratio:3/4;width:100%;max-width:340px;margin:0 auto;border-radius:14px;overflow:hidden;background:#0b1413}
 .scanbox canvas{width:100%;height:100%;display:block;object-fit:cover}
@@ -173,7 +175,9 @@ ol.routine li::before{content:counter(s);font-family:var(--f-mono);font-size:12p
       <canvas id="mesh" hidden></canvas>
       <span class="guide" id="guide" hidden></span>
       <span class="camchip" id="camChip" hidden></span>
+      <canvas id="hud" hidden></canvas>
       <span class="count" id="count" hidden></span>
+      <span class="camtip" id="camTip" hidden></span>
     </div>
     <div class="row">
       <button type="button" id="camBtn" style="flex:1">카메라 켜기</button>
@@ -703,7 +707,7 @@ const cancelCount = () => { clearInterval(countTimer); countTimer = null; $("cou
 const stopCam = () => {
   cancelAnimationFrame(raf); cancelCount();
   stream?.getTracks().forEach(t => t.stop()); stream = null;
-  $("cam").hidden = true; $("mesh").hidden = true; chip(""); $("guide").classList.remove("ok");
+  $("cam").hidden = true; $("mesh").hidden = true; $("hud").hidden = true; $("camTip").hidden = true; poseS = null; chip(""); $("guide").classList.remove("ok");
   $("camBtn").textContent = "카메라 켜기";
 };
 function drawFace(g, pts, W, H, t, alpha = 1) {
@@ -730,18 +734,87 @@ function drawFace(g, pts, W, H, t, alpha = 1) {
   for (let i = 0; i < pts.length; i += 2) { const p = pts[i], dd = Math.abs(p.y - sy) / band; if (dd < 1) { g.globalAlpha = (1 - dd) * alpha; g.beginPath(); g.arc(p.x * W, p.y * H, r, 0, 7); g.fill(); } }
   g.globalAlpha = 1;
 }
+// ---- frontal-pose guide: 3-axis head angle, level target, eye-level line, camera height tip ----
+const POSE = { yaw: 6, pitch: 5, roll: 4, PITCH0: -4.4 }; // limits in degrees; PITCH0 = reading of a perfectly frontal standard face
+const GUIDE = { cx: 0.5, cy: 0.475, eyeY: 0.44 };          // guide-oval centre and eye-level line, as fractions of the box
+let poseS = null, pitchBadSince = 0, pitchBadDir = 0;
+function headPose(lm, vw, vh) {
+  const p = k => [lm[k].x * vw, lm[k].y * vh, (lm[k].z || 0) * vw];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], nrm = a => { const l = Math.hypot(...a) || 1; return a.map(v => v / l); };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const xa = nrm(sub(p(263), p(33))), down = nrm(sub(p(152), p(168)));
+  let f = nrm(cross(down, xa)); if (f[2] > 0) f = f.map(v => -v);
+  return { yaw: Math.atan2(f[0], -f[2]) * 180 / Math.PI, pitch: Math.atan2(-f[1], -f[2]) * 180 / Math.PI - POSE.PITCH0, roll: Math.atan2(xa[1], xa[0]) * 180 / Math.PI };
+}
+// landmark (camera image coords) -> position inside the mirrored 3:4 preview box, 0..1
+function toBox(p, v) {
+  const ar = v.videoWidth / v.videoHeight, visW = ar > 3 / 4 ? (3 / 4) / ar : 1, visH = ar > 3 / 4 ? 1 : ar / (3 / 4);
+  return { x: 1 - (p.x - (1 - visW) / 2) / visW, y: (p.y - (1 - visH) / 2) / visH };
+}
 function faceStatus(pts, v) {
-  if (!pts) return "얼굴이 보이지 않아요. 카메라를 정면으로 봐 주세요";
-  const ar = v.videoWidth / v.videoHeight;
-  const visW = ar > 3 / 4 ? (3 / 4) / ar : 1, visH = ar > 3 / 4 ? 1 : ar / (3 / 4), x0 = (1 - visW) / 2, y0 = (1 - visH) / 2;
-  let a = 1, b = 0, c = 1, d = 0; for (const p of pts) { a = Math.min(a, p.x); b = Math.max(b, p.x); c = Math.min(c, p.y); d = Math.max(d, p.y); }
-  const fw = (b - a) / visW, fx = ((a + b) / 2 - x0) / visW, fy = ((c + d) / 2 - y0) / visH;
-  if (fw < 0.45) return "조금 더 가까이 와 주세요";
-  if (fw > 0.8) return "조금 뒤로 물러나 주세요";
-  if (Math.abs(fx - .5) > .1 || Math.abs(fy - .475) > .1) return "얼굴을 타원 가운데에 맞춰 주세요";
-  const yaw = (pts[1].x - (pts[234].x + pts[454].x) / 2) / (pts[454].x - pts[234].x);
-  if (Math.abs(yaw) > .09) return "고개를 돌리지 말고 정면을 봐 주세요";
-  return "";
+  const st = { ok: false, msg: "", tip: "", pose: null, eyes: null, parts: {} };
+  if (!pts) { poseS = null; st.msg = "얼굴이 보이지 않아요. 카메라를 정면으로 봐 주세요"; return st; }
+  const raw = headPose(pts, v.videoWidth, v.videoHeight);
+  poseS = poseS ? { yaw: poseS.yaw * .7 + raw.yaw * .3, pitch: poseS.pitch * .7 + raw.pitch * .3, roll: poseS.roll * .7 + raw.roll * .3 } : raw;
+  const ps = st.pose = poseS;
+  const box = pts.map(p => toBox(p, v));
+  let a = 1, b = 0, c = 1, d = 0; for (const q of box) { a = Math.min(a, q.x); b = Math.max(b, q.x); c = Math.min(c, q.y); d = Math.max(d, q.y); }
+  const fw = b - a, fx = (a + b) / 2, fy = (c + d) / 2;
+  const eR = toBox({ x: (pts[33].x + pts[133].x) / 2, y: (pts[33].y + pts[133].y) / 2 }, v), eL = toBox({ x: (pts[263].x + pts[362].x) / 2, y: (pts[263].y + pts[362].y) / 2 }, v);
+  st.eyes = [eR, eL];
+  const eyeY = (eR.y + eL.y) / 2;
+  // in the mirrored preview, a positive camera-image yaw shows the nose moving to the screen's left
+  const P = st.parts = {
+    size: fw >= 0.52 && fw <= 0.76, centre: Math.abs(fx - GUIDE.cx) <= .07,
+    roll: Math.abs(ps.roll) <= POSE.roll, yaw: Math.abs(ps.yaw) <= POSE.yaw, pitch: Math.abs(ps.pitch) <= POSE.pitch,
+    eyes: Math.abs(eyeY - GUIDE.eyeY) <= .04
+  };
+  if (!P.size) st.msg = fw < 0.52 ? "조금 더 가까이 와 주세요" : "조금 뒤로 물러나 주세요";
+  else if (!P.centre) st.msg = fx < GUIDE.cx ? "→ 오른쪽으로 조금 옮겨 주세요" : "← 왼쪽으로 조금 옮겨 주세요";
+  else if (!P.roll) st.msg = "고개가 기울어졌어요. 똑바로 세워 주세요";
+  else if (!P.yaw) st.msg = ps.yaw > 0 ? "→ 고개를 오른쪽으로 조금 돌려 주세요" : "← 고개를 왼쪽으로 조금 돌려 주세요";
+  else if (!P.pitch) st.msg = ps.pitch > 0 ? "↓ 턱을 조금 내려 주세요" : "↑ 턱을 조금 들어 주세요";
+  else if (!P.eyes) st.msg = eyeY > GUIDE.eyeY ? "↑ 눈을 점선에 맞춰 주세요 (카메라를 조금 낮추거나 몸을 올려 주세요)" : "↓ 눈을 점선에 맞춰 주세요 (카메라를 조금 올리거나 몸을 낮춰 주세요)";
+  st.ok = !st.msg;
+  // camera height: the same up/down correction is asked for several seconds in a row
+  const dir = P.size && P.centre && P.roll && P.yaw && !P.pitch ? Math.sign(ps.pitch) : 0;
+  if (dir && dir === pitchBadDir) { if (performance.now() - pitchBadSince > 3500)
+      st.tip = dir > 0 ? "카메라가 눈보다 낮으면 올려다보는 사진이 돼요. 노트북을 책 위에 올리거나 휴대폰을 눈높이로 들어 주세요."
+                       : "카메라가 눈보다 높으면 내려다보는 사진이 돼요. 휴대폰을 눈높이까지 내려 주세요."; }
+  else { pitchBadDir = dir; pitchBadSince = performance.now(); }
+  return st;
+}
+function drawHud(st) {
+  const cv = $("hud"), r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+  const g = cv.getContext("2d"), W = cv.width, H = cv.height, OK = "#7fe3d6", BAD = "rgba(255,255,255,.85)", WARN = "#ffcf5a";
+  g.clearRect(0, 0, W, H); if (!st) return;
+  const u = Math.min(W, H) / 100;
+  // eye-level line across the guide oval
+  const ey = GUIDE.eyeY * H, gx0 = W * .2, gx1 = W * .8;
+  g.setLineDash([u * 1.6, u * 1.2]); g.lineWidth = Math.max(1.5, u * .45); g.strokeStyle = st.parts.eyes ? OK : BAD;
+  g.beginPath(); g.moveTo(gx0, ey); g.lineTo(gx1, ey); g.stroke(); g.setLineDash([]);
+  if (st.eyes) { // actual eye line: shows height and tilt
+    const [p, q] = st.eyes; g.strokeStyle = st.parts.eyes && st.parts.roll ? OK : WARN; g.lineWidth = Math.max(2, u * .6);
+    g.beginPath(); g.moveTo(p.x * W, p.y * H); g.lineTo(q.x * W, q.y * H); g.stroke();
+    for (const e of st.eyes) { g.beginPath(); g.arc(e.x * W, e.y * H, u * 1.1, 0, 7); g.fillStyle = g.strokeStyle; g.fill(); }
+  }
+  // level target at the oval centre; the dot follows where the nose points
+  const cx = GUIDE.cx * W, cy = GUIDE.cy * H, R = u * 6, k = R / Math.max(POSE.yaw, POSE.pitch);
+  const aimOk = st.parts.yaw && st.parts.pitch;
+  g.lineWidth = Math.max(1.5, u * .45); g.strokeStyle = aimOk ? OK : BAD;
+  g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+  g.beginPath(); g.moveTo(cx - R * 1.6, cy); g.lineTo(cx - R * .5, cy); g.moveTo(cx + R * .5, cy); g.lineTo(cx + R * 1.6, cy);
+  g.moveTo(cx, cy - R * 1.6); g.lineTo(cx, cy - R * .5); g.moveTo(cx, cy + R * .5); g.lineTo(cx, cy + R * 1.6); g.stroke();
+  if (st.pose) {
+    const lim = R * 3.2, dx = Math.max(-lim, Math.min(lim, -st.pose.yaw * k)), dy = Math.max(-lim, Math.min(lim, -st.pose.pitch * k));
+    g.beginPath(); g.arc(cx + dx, cy + dy, u * 2.2, 0, 7); g.fillStyle = aimOk ? OK : WARN; g.fill();
+    g.lineWidth = Math.max(1, u * .3); g.strokeStyle = "rgba(0,0,0,.45)"; g.stroke();
+    // angle readout
+    g.font = `${Math.round(u * 3.1)}px ui-monospace, Menlo, monospace`; g.textAlign = "center"; g.fillStyle = "rgba(255,255,255,.9)";
+    const f = v => (v >= 0 ? "+" : "") + v.toFixed(0) + "°";
+    g.fillText(`좌우 ${f(-st.pose.yaw)}  위아래 ${f(st.pose.pitch)}  기울기 ${f(st.pose.roll)}`, W / 2, H * .06);
+  }
 }
 function camLoop() {
   if (!stream) return;
@@ -753,7 +826,9 @@ function camLoop() {
     lastLm = pts;
     const g = c.getContext("2d"); g.clearRect(0, 0, c.width, c.height); c.hidden = false;
     drawFace(g, pts, c.width, c.height, performance.now());
-    const msg = faceStatus(pts, v), ok = !msg;
+    const st = faceStatus(pts, v), ok = st.ok, msg = st.msg;
+    drawHud(pts ? st : null); $("hud").hidden = false;
+    $("camTip").textContent = st.tip; $("camTip").hidden = !st.tip;
     $("guide").classList.toggle("ok", ok);
     if (ok) {
       if (!goodSince) goodSince = performance.now();
