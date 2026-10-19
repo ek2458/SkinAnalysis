@@ -89,6 +89,14 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .metric .val{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right;font-size:14px}
 .metric .mnote{grid-column:2 / 4;font-size:13px;color:var(--muted);margin-top:-6px}
 .metric .lab{font-weight:600;font-size:14px}
+button.metric{width:100%;background:transparent;border:0;color:inherit;font:inherit;font-weight:400;text-align:left;padding:8px;border-radius:8px;cursor:pointer;grid-template-columns:96px 1fr 40px}
+button.metric[aria-pressed="true"]{background:var(--accent-soft)}
+button.metric:disabled{cursor:default;opacity:1}
+.mgroup{display:flex;flex-direction:column;gap:2px}
+.mgroup h3{font-size:12px;letter-spacing:.08em;color:var(--muted);font-family:var(--f-mono);margin:6px 0 2px}
+.mapwrap{position:relative;width:100%;max-width:360px;margin:0 auto;border-radius:12px;overflow:hidden;background:#0b1413}
+.mapwrap canvas{display:block;width:100%;height:auto}
+.maplabel{position:absolute;left:10px;top:10px;background:rgba(10,20,19,.72);color:#fff;padding:4px 10px;border-radius:999px;font-size:12.5px}
 .zones{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media (max-width:420px){.zones{grid-template-columns:1fr}}
 .zone{border-left:2px solid var(--accent);padding:2px 0 2px 10px;font-size:13.5px;min-width:0}
@@ -119,9 +127,9 @@ ol.routine li::before{content:counter(s);font-family:var(--f-mono);font-size:12p
   <!-- intro -->
   <section id="s-intro" class="stack">
     <div class="card stack">
-      <span class="eyebrow">AI 셀피 피부 분석</span>
+      <span class="eyebrow">셀피 피부 분석 · 15개 항목</span>
       <h1>셀피 한 장으로 지금 피부 상태를 읽어 드려요</h1>
-      <p class="lead">간단한 질문 세 가지와 정면 셀피로 주름, 모공, 잡티, 붉은기, 유수분 등 7가지 지표를 점수로 보여 주고 아침·저녁 루틴과 추천 성분을 정리해 드립니다.</p>
+      <p class="lead">간단한 질문과 정면 셀피로 잡티, 모공, 주름, 다크서클, 눈꺼풀 처짐 등 15개 항목을 측정해 점수와 피부 맵으로 보여 주고, 아침·저녁 루틴과 추천 성분을 정리해 드립니다.</p>
       <div class="how">
         <div><b>질문 3개</b>나이대, 피부 느낌, 고민</div>
         <div><b>셀피 촬영</b>밝은 곳, 맨얼굴 정면</div>
@@ -253,7 +261,7 @@ $("quizNext").onclick = () => {
 };
 
 // photo
-let photo = null, previewUrl = null;
+let photo = null, previewUrl = null, photoSrc = "file";
 const toJpeg = async f => {
   const img = await createImageBitmap(f);
   const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
@@ -266,7 +274,7 @@ const setPhoto = async f => {
     try { f = await toJpeg(f); } catch { f = null; }
   }
   if (!f || !/^image\/(jpeg|png|webp)$/.test(f.type)) { $("photoErr").textContent = "이 사진 형식은 열 수 없어요. JPG, PNG, WebP 사진으로 올려 주세요."; $("photoErr").hidden = false; return; }
-  photo = f; photoLm = null; if (previewUrl) URL.revokeObjectURL(previewUrl);
+  photo = f; photoLm = null; photoSrc = "file"; if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = URL.createObjectURL(f);
   $("preview").src = previewUrl; $("preview").hidden = false; $("guide").hidden = false; $("dropText").hidden = true;
   $("analyzeBtn").disabled = false;
@@ -293,145 +301,377 @@ function boxBlur(src, W, H, r) {
   }
   return out;
 }
-async function localAnalyze(blob, a, lm) {
-  const img = await createImageBitmap(blob);
-  let sw = img.width, sh = img.height, sx = 0, sy = 0;
-  if (sw / sh > 3 / 4) { const nw = sh * 3 / 4; sx = (sw - nw) / 2; sw = nw; } else { const nh = sw * 4 / 3; sy = (sh - nh) / 2; sh = nh; }
-  const W = 300, H = 400, c = document.createElement("canvas"); c.width = W; c.height = H;
-  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
-  const d = g.getImageData(0, 0, W, H).data;
-  const L = new Float32Array(W * H), RN = new Float32Array(W * H), skin = new Uint8Array(W * H);
-  let cx = W / 2, cy = H * 0.49, rx = W * 0.30, ry = H * 0.37, mask = null;
+// ---- 15-concern skin analysis (runs in the browser, no server) ----
+const CONCERNS = [
+  ["surface", "피부 표면", [["spots","잡티"],["redness","붉은기"],["acne","트러블"],["pores","모공"],["texture","피부결"],["radiance","광채"]]],
+  ["balance", "유수분", [["oiliness","유분"],["moisture","수분"]]],
+  ["aging", "노화", [["wrinkles","주름"],["firmness","탄력"]]],
+  ["eye", "눈가", [["darkCircles","다크서클"],["eyeBags","눈밑 지방"],["tearTrough","눈물고랑"],["upperEyelid","윗눈꺼풀 처짐"],["lowerEyelid","아래눈꺼풀 처짐"]]]
+];
+const LABEL = Object.fromEntries(CONCERNS.flatMap(g => g[2]));
+const NOTE15 = {
+  spots: ["톤이 고르고 잡티가 거의 없어요.", "옅은 잡티가 군데군데 보여요.", "잡티와 색소 침착이 눈에 띄어요."],
+  redness: ["붉은기가 거의 없어요.", "코 주변과 볼에 가벼운 붉은기가 있어요.", "볼과 코 주변 붉은기가 넓게 보여요."],
+  acne: ["트러블이 거의 보이지 않아요.", "작은 트러블이 몇 개 보여요.", "붉은 트러블이 여러 곳에 보여요."],
+  pores: ["모공이 잘 보이지 않아요.", "코와 볼 안쪽 모공이 조금 보여요.", "코와 볼 모공이 넓어 보여요."],
+  texture: ["피부결이 매끈한 편이에요.", "볼 쪽 결이 살짝 고르지 않아요.", "요철이 많아 결이 거칠어 보여요."],
+  radiance: ["톤이 균일하고 생기 있어 보여요.", "톤이 약간 고르지 않아요.", "톤이 고르지 않고 칙칙해 보여요."],
+  oiliness: ["유분이 고르게 분포돼 있어요.", "이마와 코에 유분이 조금 몰려 있어요.", "T존 번들거림이 많은 편이에요."],
+  moisture: ["수분감이 충분해 보여요.", "수분이 조금 부족할 수 있어요.", "건조함이 느껴지는 상태예요."],
+  wrinkles: ["이마와 눈가가 매끈한 편이에요.", "이마나 눈가에 얕은 주름이 보여요.", "이마와 눈가 주름이 뚜렷한 편이에요."],
+  firmness: ["윤곽이 탄탄한 편이에요.", "팔자 주름이나 입꼬리 쪽 처짐이 조금 보여요.", "팔자 주름과 처짐이 뚜렷한 편이에요."],
+  darkCircles: ["눈 밑 톤이 밝은 편이에요.", "눈 밑이 볼보다 조금 어두워요.", "눈 밑 그늘이 짙은 편이에요."],
+  eyeBags: ["눈 밑이 평평한 편이에요.", "눈 밑이 살짝 도드라져 보여요.", "눈 밑 볼록함과 그림자가 뚜렷해요."],
+  tearTrough: ["눈 앞쪽 꺼짐이 거의 없어요.", "눈 앞머리 아래가 조금 꺼져 보여요.", "눈물고랑 그늘이 깊어 보여요."],
+  upperEyelid: ["눈꺼풀이 눈동자를 거의 가리지 않아요.", "윗눈꺼풀이 눈동자를 조금 덮고 있어요.", "윗눈꺼풀이 눈동자를 많이 덮고 있어요."],
+  lowerEyelid: ["아래 눈꺼풀이 탄탄하게 받쳐 주고 있어요.", "아래 눈꺼풀이 조금 내려와 보여요.", "아래 눈꺼풀이 처져 흰자가 많이 보여요."]
+};
+const LAYER_COLOR = { spots:"#ffb020", redness:"#ff5a5a", acne:"#ff3d7f", pores:"#58d4ff", texture:"#c79bff", radiance:"#ffe27a",
+  oiliness:"#fff06a", moisture:"#6fb7ff", wrinkles:"#7fe3d6", firmness:"#ff9f6b", darkCircles:"#9b8cff", eyeBags:"#7ad1ff",
+  tearTrough:"#ff8fd1", upperEyelid:"#7fe3d6", lowerEyelid:"#7fe3d6" };
+const R15 = {
+  forehead:[10,338,297,332,284,251,21,54,103,67,109,70,63,105,66,107,336,296,334,293,300,151,9],
+  glabella:[107,55,193,168,417,285,336,9],
+  nose:[168,6,197,195,5,4,1,98,327,129,358,64,294,2],
+  cheekR:[117,118,101,36,205,187,147,123], cheekL:[346,347,330,266,425,411,376,352],
+  chin:[17,84,314,181,405,148,176,149,377,400,378,152,175,199,200],
+  crowR:[130,226,113,143,156,127,34,139], crowL:[359,446,342,372,383,356,264,368],
+  underR:[130,25,110,24,23,22,26,112,243,245,128,121,120,119,118,117,111,143],
+  underL:[359,255,339,254,253,252,256,341,463,465,357,350,349,348,347,346,340,372],
+  bagR:[130,25,110,24,23,22,26,112,243,244,233,232,231,230,229,228,31,226],
+  bagL:[359,255,339,254,253,252,256,341,463,464,453,452,451,450,449,448,261,446],
+  shadowR:[226,31,228,229,230,231,232,233,244,245,128,121,120,119,118,117,111,143],
+  shadowL:[446,261,448,449,450,451,452,453,464,465,357,350,349,348,347,346,340,372],
+  troughR:[243,112,26,244,233,245,128,121], troughL:[463,341,256,464,453,465,357,350]
+};
+const ORDERED = new Set(["underR","underL","bagR","bagL","shadowR","shadowL"]);
+function hull(P) {
+  const p = [...P].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lo = [], up = [];
+  for (const q of p) { while (lo.length >= 2 && cr(lo[lo.length-2], lo[lo.length-1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of p.slice().reverse()) { while (up.length >= 2 && cr(up[up.length-2], up[up.length-1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+function blobs(cand, W, H, minS, maxS) {
+  const lab = new Uint8Array(W * H), st = new Int32Array(W * H), out = [];
+  for (let i = 0; i < W * H; i++) if (cand[i] && !lab[i]) {
+    let sp = 0, n = 0, sx = 0, sy = 0; st[sp++] = i; lab[i] = 1; const px = [];
+    while (sp) {
+      const j = st[--sp], x = j % W, y = (j - x) / W; n++; sx += x; sy += y; if (px.length < 3000) px.push(j);
+      if (x > 0 && cand[j-1] && !lab[j-1]) { lab[j-1] = 1; st[sp++] = j - 1; }
+      if (x < W-1 && cand[j+1] && !lab[j+1]) { lab[j+1] = 1; st[sp++] = j + 1; }
+      if (y > 0 && cand[j-W] && !lab[j-W]) { lab[j-W] = 1; st[sp++] = j - W; }
+      if (y < H-1 && cand[j+W] && !lab[j+W]) { lab[j+W] = 1; st[sp++] = j + W; }
+    }
+    if (n >= minS && n <= maxS) out.push({ n, x: sx / n, y: sy / n, px });
+  }
+  return out;
+}
+// map a raw measure to 0-100 (higher = better). good -> 95, bad -> 35
+const sc = (x, good, bad) => { const t = (x - good) / (bad - good); return Math.round(Math.max(28, Math.min(97, 95 - 60 * t))); };
+
+async function localAnalyze(blob, a, lm, allowFallback) {
+  if (!lm && !allowFallback) return { valid: false, reason: window.FaceScan?.ready ? "사진에서 얼굴을 찾지 못했어요. 얼굴이 정면으로 크게 나온 사진을 올려 주세요." : "얼굴 인식 모델을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요." };
+  const img = await createImageBitmap(blob), IW = img.width, IH = img.height, FACEW = 360;
+  // ----- crop around the face -----
+  let x0, y0, cw, ch, polys = {}, holesP = [], ovalP, eyes = null, mouth = null, naso = null;
   if (lm) {
-    const mc = document.createElement("canvas"); mc.width = W; mc.height = H; const mg = mc.getContext("2d");
-    const P = k => [(lm[k].x * img.width - sx) / sw * W, (lm[k].y * img.height - sy) / sh * H];
-    const poly = (idx) => { mg.beginPath(); idx.forEach((k, i) => { const [x, y] = P(k); i ? mg.lineTo(x, y) : mg.moveTo(x, y); }); mg.closePath(); };
-    mg.fillStyle = "#fff"; poly(OVAL_IDX); mg.fill();
-    mg.fillStyle = "#000"; mg.strokeStyle = "#000"; mg.lineWidth = 6; for (const h of HOLES) { poly(h); mg.fill(); mg.stroke(); }
-    const md = mg.getImageData(0, 0, W, H).data; mask = new Uint8Array(W * H); for (let i = 0; i < W * H; i++) mask[i] = md[i * 4] > 128;
-    const xs = OVAL_IDX.map(k => P(k)[0]), ys = OVAL_IDX.map(k => P(k)[1]);
-    cx = (Math.min(...xs) + Math.max(...xs)) / 2; cy = (Math.min(...ys) + Math.max(...ys)) / 2; rx = (Math.max(...xs) - Math.min(...xs)) / 2; ry = (Math.max(...ys) - Math.min(...ys)) / 2;
+    const ox = OVAL_IDX.map(k => lm[k].x * IW), oy = OVAL_IDX.map(k => lm[k].y * IH);
+    const fx0 = Math.min(...ox), fx1 = Math.max(...ox), fy0 = Math.min(...oy), fy1 = Math.max(...oy), fw = fx1 - fx0, fh = fy1 - fy0;
+    x0 = Math.max(0, fx0 - fw * .12); y0 = Math.max(0, fy0 - fh * .1); cw = Math.min(IW, fx1 + fw * .12) - x0; ch = Math.min(IH, fy1 + fh * .08) - y0;
+    var s = FACEW / fw;
+  } else {
+    // no landmarks: assume the face fills the guide oval of a 3:4 crop
+    cw = IW; ch = IH; x0 = 0; y0 = 0;
+    if (IW / IH > 3 / 4) { cw = IH * 3 / 4; x0 = (IW - cw) / 2; } else { ch = IW * 4 / 3; y0 = (IH - ch) / 2; }
+    var s = FACEW / (cw * 0.6);
   }
-  let inEll = 0;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = y * W + x, r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2];
-    L[i] = 0.299 * r + 0.587 * gg + 0.114 * b;
-    RN[i] = (r - gg) / (r + gg + b + 1);
-    const u = (x - cx) / rx, v = (y - cy) / ry;
-    if (mask ? !mask[i] : u * u + v * v > 1) continue;
-    inEll++;
-    const cb = 128 - 0.168736 * r - 0.331264 * gg + 0.5 * b, cr = 128 + 0.5 * r - 0.418688 * gg - 0.081312 * b;
-    if (cb >= 77 && cb <= 130 && cr >= 130 && cr <= 178 && L[i] > 40) skin[i] = 1;
+  const W = Math.round(cw * s), H = Math.round(ch * s), N = W * H;
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, x0, y0, cw, ch, 0, 0, W, H);
+  const d = g.getImageData(0, 0, W, H).data;
+  const P = k => [(lm[k].x * IW - x0) * s, (lm[k].y * IH - y0) * s];
+  if (lm) {
+    ovalP = OVAL_IDX.map(P);
+    holesP = HOLES.map(h => h.map(P));
+    for (const [k, idx] of Object.entries(R15)) polys[k] = ORDERED.has(k) ? idx.map(P) : hull(idx.map(P));
+    // keep the forehead below the likely hairline: brows plus 60% of the way up to the face outline
+    const lerp = (i, j, t) => { const p = P(i), q = P(j); return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]; };
+    const FH = [[70,54],[63,103],[105,67],[66,109],[107,10],[336,10],[296,338],[334,297],[293,332],[300,284]];
+    polys.forehead = hull([...FH.map(([b]) => P(b)), ...FH.map(([b, t]) => lerp(b, t, 0.6))]);
+    // eye geometry (iris needs the 478-point model)
+    const ax = P(33), bx = P(263), ex = [bx[0] - ax[0], bx[1] - ax[1]], el = Math.hypot(...ex), u = [ex[0] / el, ex[1] / el], n = [-u[1], u[0]];
+    const dot = (p, q) => p[0] * q[0] + p[1] * q[1], sub = (p, q) => [p[0] - q[0], p[1] - q[1]];
+    const eye = (inner, outer, up, low) => ({ inner: P(inner), outer: P(outer), up: P(up), low: P(low) });
+    const E = { R: eye(133, 33, 159, 145), L: eye(362, 263, 386, 374) };
+    if (lm.length >= 478) {
+      const irs = [[468, 469, 471], [473, 474, 476]].map(([cI, a1, a2]) => ({ c: P(cI), r: Math.hypot(...sub(P(a1), P(a2))) / 2 }));
+      for (const k of ["R", "L"]) {
+        const e = E[k], mid = [(e.inner[0] + e.outer[0]) / 2, (e.inner[1] + e.outer[1]) / 2];
+        const ir = irs.sort((p, q) => Math.hypot(...sub(p.c, mid)) - Math.hypot(...sub(q.c, mid)))[0];
+        e.c = ir.c; e.r = Math.max(2, ir.r);
+        e.mrd1 = -dot(sub(e.up, e.c), n) / e.r; e.mrd2 = dot(sub(e.low, e.c), n) / e.r;
+      }
+    }
+    for (const k of ["R", "L"]) {
+      const e = E[k], v = sub(e.outer, e.inner), along = Math.abs(dot(v, u)), upv = -dot(v, n);
+      e.tilt = Math.atan2(upv, along) * 180 / Math.PI;
+      e.aperture = (dot(sub(e.low, e.up), n)) / Math.hypot(...v);
+    }
+    eyes = E;
+    const ir = E.R.r ? (E.R.r + E.L.r) / 2 : el * 0.09;
+    const mid = [(P(13)[0] + P(14)[0]) / 2, (P(13)[1] + P(14)[1]) / 2];
+    mouth = { mid, cR: P(61), cL: P(291), droop: (dot(sub(P(61), mid), n) + dot(sub(P(291), mid), n)) / 2 / ir, ir };
+    const band = (ala, corner) => {
+      const A = P(ala), B = P(corner), cx = (ovalP.reduce((t, p) => t + p[0], 0) / ovalP.length), lat = Math.sign(A[0] - cx) || 1, w = FACEW;
+      return [A, [A[0] + lat * w * .07, A[1]], [B[0] + lat * w * .1, B[1] + w * .03], [B[0] + lat * w * .015, B[1]]];
+    };
+    naso = [band(129, 61), band(358, 291)];
+    polys.nasoR = naso[0]; polys.nasoL = naso[1];
+  } else {
+    const cx = W / 2, cy = H * 0.49, rx = W * 0.3, ry = H * 0.37;
+    const R = (u0, u1, v0, v1) => [[cx + u0 * rx, cy + v0 * ry], [cx + u1 * rx, cy + v0 * ry], [cx + u1 * rx, cy + v1 * ry], [cx + u0 * rx, cy + v1 * ry]];
+    ovalP = Array.from({ length: 48 }, (_, i) => [cx + Math.cos(i / 48 * 6.283) * rx, cy + Math.sin(i / 48 * 6.283) * ry]);
+    holesP = [R(-.58, -.14, -.32, -.1), R(.14, .58, -.32, -.1), R(-.36, .36, .4, .64), R(-.62, -.12, -.48, -.33), R(.12, .62, -.48, -.33)];
+    Object.assign(polys, {
+      forehead: R(-.6, .6, -.95, -.5), glabella: R(-.12, .12, -.48, -.28), nose: R(-.16, .16, -.22, .3),
+      cheekR: R(-.78, -.3, 0, .42), cheekL: R(.3, .78, 0, .42), chin: R(-.35, .35, .68, .95),
+      crowR: R(-.96, -.62, -.3, -.04), crowL: R(.62, .96, -.3, -.04),
+      underR: R(-.55, -.16, -.09, .04), underL: R(.16, .55, -.09, .04), bagR: R(-.55, -.16, -.09, -.02), bagL: R(.16, .55, -.09, -.02),
+      shadowR: R(-.55, -.16, -.02, .05), shadowL: R(.16, .55, -.02, .05), troughR: R(-.26, -.13, -.06, .08), troughL: R(.13, .26, -.06, .08),
+      nasoR: R(-.36, -.2, .15, .45), nasoL: R(.2, .36, .15, .45)
+    });
   }
-  const B1 = boxBlur(L, W, H, 1), B6 = boxBlur(L, W, H, 6);
-  const zoneOf = (x, y) => {
-    const u = (x - cx) / rx, v = (y - cy) / ry;
-    if (v < -0.45) return "이마"; if (v < -0.1) return "눈가";
-    if (v >= 0.45) return "입가·턱"; return Math.abs(u) < 0.22 ? "코·T존" : "볼";
+  // ----- masks -----
+  const mc = document.createElement("canvas"); mc.width = W; mc.height = H;
+  const mg = mc.getContext("2d", { willReadFrequently: true });
+  const path = p => { mg.beginPath(); p.forEach(([x, y], i) => i ? mg.lineTo(x, y) : mg.moveTo(x, y)); mg.closePath(); };
+  const raster = (list, withHoles) => {
+    mg.globalCompositeOperation = "source-over"; mg.clearRect(0, 0, W, H); mg.fillStyle = "#fff";
+    for (const p of list) { path(p); mg.fill(); }
+    if (withHoles) { mg.globalCompositeOperation = "destination-out"; mg.lineWidth = Math.max(4, W / 70); mg.strokeStyle = "#fff";
+      for (const p of holesP) { path(p); mg.fill(); mg.stroke(); } mg.globalCompositeOperation = "source-over"; }
+    const md = mg.getImageData(0, 0, W, H).data, m = new Uint8Array(N); for (let i = 0; i < N; i++) m[i] = md[i * 4 + 3] > 127; return m;
   };
-  // global means
-  let n = 0, sL = 0, sL2 = 0, sRN = 0, sB = 0, sB2 = 0;
-  for (let i = 0; i < W * H; i++) if (skin[i]) { n++; sL += L[i]; sL2 += L[i] * L[i]; sRN += RN[i]; sB += B6[i]; sB2 += B6[i] * B6[i]; }
-  if (n < inEll * 0.25) return { valid: false, reason: "얼굴 피부를 충분히 찾지 못했어요. 밝은 곳에서 얼굴이 타원 가이드를 채우도록 정면으로 다시 찍어 주세요." };
-  const mL = sL / n, sdL = Math.sqrt(Math.max(0, sL2 / n - mL * mL)), mRN = sRN / n;
-  const mB = sB / n, sdB = Math.sqrt(Math.max(0, sB2 / n - mB * mB));
-  if (mL < 60) return { valid: false, reason: "사진이 너무 어두워요. 창가나 밝은 조명 아래에서 다시 찍어 주세요." };
-  const Z = {}; for (const k of ["이마","눈가","볼","코·T존","입가·턱"]) Z[k] = { n: 0, red: 0, spec: 0, hf: 0, spot: 0 };
-  const specT = Math.min(250, mL + 1.8 * sdL);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = y * W + x; if (!skin[i]) continue;
-    const z = Z[zoneOf(x, y)]; z.n++;
-    if (RN[i] > mRN + 0.035) z.red++;
+  const L = new Float32Array(N), RN = new Float32Array(N), SAT = new Float32Array(N), face = raster([ovalP], true), skin = new Uint8Array(N);
+  let inFace = 0;
+  for (let i = 0; i < N; i++) {
     const r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
-    if (L[i] > specT && (mx - mn) / (mx + 1) < 0.25) z.spec++;
-    z.hf += Math.abs(L[i] - B1[i]);
-    if (B6[i] - B1[i] > 9) z.spot++;
+    L[i] = 0.299 * r + 0.587 * gg + 0.114 * b; RN[i] = (r - gg) / (r + gg + b + 1); SAT[i] = (mx - mn) / (mx + 1);
+    if (!face[i]) continue; inFace++;
+    const cb = 128 - 0.168736 * r - 0.331264 * gg + 0.5 * b, cr = 128 + 0.5 * r - 0.418688 * gg - 0.081312 * b;
+    if (cb >= 72 && cb <= 135 && cr >= 128 && cr <= 182 && L[i] > 35) skin[i] = 1;
   }
-  const fr = (k, f) => Z[k].n ? Z[k][f] / Z[k].n : 0;
-  const avg = (ks, f) => { let s = 0, m = 0; for (const k of ks) { s += Z[k][f]; m += Z[k].n; } return m ? s / m : 0; };
-  const cl = v => Math.round(Math.max(30, Math.min(95, v)));
-  const has = c => (a.concern || []).includes(c);
-  let wrinkles = cl(100 - (avg(["눈가","이마"], "hf") - 1.6) * 11);
-  let pores = cl(100 - (avg(["코·T존","볼"], "hf") - 1.4) * 13);
-  let spots = cl(96 - avg(["볼","이마","입가·턱"], "spot") * 450);
-  let redness = cl(97 - avg(["볼","코·T존","입가·턱"], "red") * 220);
-  let oil = cl(95 - avg(["이마","코·T존"], "spec") * 420);
-  let hydration = cl(98 - sdB * 1.1 - (avg(["볼"], "hf") - 1.4) * 6);
+  let nSkin = 0; for (let i = 0; i < N; i++) nSkin += skin[i];
+  if (nSkin < inFace * 0.3) return { valid: false, reason: "얼굴 피부를 충분히 찾지 못했어요. 밝은 곳에서 얼굴이 타원 가이드를 채우도록 정면으로 다시 찍어 주세요." };
+  const M = {}; for (const k in polys) M[k] = raster([polys[k]], true);
+  const or = (...ks) => { const m = new Uint8Array(N); for (const k of ks) { const q = M[k]; for (let i = 0; i < N; i++) if (q[i] && skin[i]) m[i] = 1; } return m; };
+  const mean = (arr, m) => { let s = 0, n = 0; for (let i = 0; i < N; i++) if (m[i]) { s += arr[i]; n++; } return n ? s / n : NaN; };
+  const count = m => { let n = 0; for (let i = 0; i < N; i++) n += m[i]; return n; };
+  const cheeks = or("cheekR", "cheekL"), tz = or("forehead", "nose", "glabella"), broad = or("forehead", "cheekR", "cheekL", "chin", "nose");
+  const Lref = mean(L, cheeks) || mean(L, skin);
+  if (Lref < 55) return { valid: false, reason: "사진이 너무 어두워요. 창가나 밝은 조명 아래에서 다시 찍어 주세요." };
+  const B1 = boxBlur(L, W, H, 1), B2 = boxBlur(L, W, H, 2), B4 = boxBlur(L, W, H, 4), B8 = boxBlur(L, W, H, 8), RNb = boxBlur(RN, W, H, 8);
+  { // tighten the skin mask: colour close to the cheeks, not hair-like texture
+    const CB = new Float32Array(N), CR = new Float32Array(N), dev = new Float32Array(N);
+    for (let i = 0; i < N; i++) { const r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2];
+      CB[i] = 128 - 0.168736 * r - 0.331264 * gg + 0.5 * b; CR[i] = 128 + 0.5 * r - 0.418688 * gg - 0.081312 * b; dev[i] = Math.abs(L[i] - B2[i]); }
+    const med = (arr, m) => { const v = []; for (let i = 0; i < N; i++) if (m[i]) v.push(arr[i]); v.sort((p, q) => p - q); return v[v.length >> 1]; };
+    const mcb = med(CB, cheeks), mcr = med(CR, cheeks), V = boxBlur(dev, W, H, 5);
+    for (let i = 0; i < N; i++) if (skin[i] && (Math.abs(CB[i] - mcb) > 10 || Math.abs(CR[i] - mcr) > 12 || V[i] / Lref > 0.05 || L[i] < Lref * 0.55)) skin[i] = 0;
+    for (const k in M) { const q = M[k]; for (let i = 0; i < N; i++) if (q[i] && !skin[i]) q[i] = 0; }
+    // broad dark areas on surface regions are hair or shadow, not skin texture
+    for (const k of ["forehead", "glabella", "crowR", "crowL", "cheekR", "cheekL", "nose", "chin"]) { const q = M[k]; if (q) for (let i = 0; i < N; i++) if (q[i] && B8[i] < Lref * 0.8) q[i] = 0; }
+    for (const q of [cheeks, tz, broad]) for (let i = 0; i < N; i++) if (q[i] && (!skin[i] || B8[i] < Lref * 0.8)) q[i] = 0;
+  }
+  const B24 = boxBlur(B8, W, H, 16);
+  const raw = {}, layers = {}, S = {};
+  const layer = () => { const cv = document.createElement("canvas"); cv.width = W; cv.height = H; return cv; };
+  const paint = (key, pix, alpha = 200) => {
+    const cv = layer(), gx = cv.getContext("2d"), id = gx.createImageData(W, H), col = LAYER_COLOR[key];
+    const [r, gg, b] = [1, 3, 5].map(o => parseInt(col.slice(o, o + 2), 16));
+    for (const i of pix) { id.data[i * 4] = r; id.data[i * 4 + 1] = gg; id.data[i * 4 + 2] = b; id.data[i * 4 + 3] = alpha; }
+    gx.putImageData(id, 0, 0); return cv;
+  };
+  const outline = (cv, list, key, fillA = .25) => {
+    const gx = cv.getContext("2d"), col = LAYER_COLOR[key]; gx.lineWidth = Math.max(1.5, W / 220); gx.strokeStyle = col; gx.fillStyle = col;
+    for (const p of list) { gx.beginPath(); p.forEach(([x, y], i) => i ? gx.lineTo(x, y) : gx.moveTo(x, y)); gx.closePath(); gx.globalAlpha = fillA; gx.fill(); gx.globalAlpha = 1; gx.stroke(); }
+    return cv;
+  };
+  const rings = (key, list, rad) => { const cv = layer(), gx = cv.getContext("2d"); gx.strokeStyle = LAYER_COLOR[key]; gx.lineWidth = Math.max(1.5, W / 240);
+    for (const o of list) { gx.beginPath(); gx.arc(o.x, o.y, rad(o), 0, 7); gx.stroke(); } return cv; };
+
+  // 1 spots: darker patches that are not red
+  { const cand = new Uint8Array(N); for (let i = 0; i < N; i++) if (broad[i] && (B8[i] - B2[i]) / Lref > 0.055 && RN[i] - RNb[i] < 0.015) cand[i] = 1;
+    const bl = blobs(cand, W, H, 8, 1500), area = bl.reduce((t, o) => t + o.n, 0);
+    raw.spots = area / Math.max(1, count(broad)); S.spots = sc(raw.spots, 0.002, 0.03); layers.spots = paint("spots", bl.flatMap(o => o.px)); }
+  // 2 redness: diffuse redness on cheeks and nose
+  { const rm = or("cheekR", "cheekL", "nose"), vals = []; for (let i = 0; i < N; i++) if (skin[i]) vals.push(RN[i]); vals.sort((p, q) => p - q);
+    const med = vals[vals.length >> 1] || 0, pix = []; let n = 0, k = 0;
+    for (let i = 0; i < N; i++) if (rm[i]) { n++; if (RN[i] > med + 0.035) { k++; pix.push(i); } }
+    raw.redness = k / Math.max(1, n); S.redness = sc(raw.redness, 0.03, 0.35); layers.redness = paint("redness", pix, 150); }
+  // 3 acne: small raised red blobs
+  let acneN = 0;
+  { const cand = new Uint8Array(N); for (let i = 0; i < N; i++) if (broad[i] && RN[i] - RNb[i] > 0.04 && (B8[i] - B2[i]) / Lref < 0.07) cand[i] = 1;
+    const bl = blobs(cand, W, H, 20, 400); acneN = bl.length;
+    raw.acne = bl.length; S.acne = sc(raw.acne, 0, 12); layers.acne = rings("acne", bl, o => Math.sqrt(o.n / Math.PI) + 4); }
+  // 4 pores: tiny dark dots on nose and cheeks
+  { const pm = or("nose", "cheekR", "cheekL"), cand = new Uint8Array(N);
+    for (let i = 0; i < N; i++) if (pm[i] && (B4[i] - B1[i]) / Lref > 0.03) cand[i] = 1;
+    const bl = blobs(cand, W, H, 1, 12); raw.pores = bl.length / Math.max(1, count(pm)) * 1000;
+    S.pores = sc(raw.pores, 2, 16); layers.pores = paint("pores", bl.flatMap(o => o.px), 230); }
+  // 5 texture: medium-scale unevenness on cheeks
+  { let t = 0, n = 0; const pix = []; for (let i = 0; i < N; i++) if (cheeks[i]) { const v = Math.abs(B1[i] - B4[i]) / Lref; t += v; n++; if (v > 0.03) pix.push(i); }
+    raw.texture = t / Math.max(1, n); S.texture = sc(raw.texture, 0.01, 0.032); layers.texture = paint("texture", pix, 150); }
+  // 6 radiance: evenness of tone across forehead and cheeks
+  { const rm = or("forehead", "cheekR", "cheekL"); let s2 = 0, n = 0; const pix = [];
+    for (let i = 0; i < N; i++) if (rm[i]) { const v = (B8[i] - B24[i]) / Lref; s2 += v * v; n++; if (v < -0.035) pix.push(i); }
+    const cv = Math.sqrt(s2 / Math.max(1, n)); raw.radiance = cv; S.radiance = sc(cv, 0.018, 0.07); layers.radiance = paint("radiance", pix, 120); }
+  // 7 oiliness: specular shine in the T-zone
+  { const pix = []; let n = 0; for (let i = 0; i < N; i++) if (tz[i]) { n++; if (L[i] > Lref * 1.22 && SAT[i] < 0.2) pix.push(i); }
+    raw.oiliness = pix.length / Math.max(1, n); S.oiliness = sc(raw.oiliness, 0.005, 0.09); layers.oiliness = paint("oiliness", pix, 220); }
+  // 8 wrinkles: line-shaped valleys (horizontal on forehead and eye corners, vertical between brows)
+  { const hz = or("forehead", "crowR", "crowL"), vt = or("glabella"), pix = []; let n = 0, k = 0;
+    for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+      const i = y * W + x; if (!hz[i] && !vt[i]) continue; n++;
+      const lyy = (B1[i - 2 * W] + B1[i + 2 * W] - 2 * B1[i]) / Lref, lxx = (B1[i - 2] + B1[i + 2] - 2 * B1[i]) / Lref;
+      if ((hz[i] && lyy > 0.022 && lyy > 1.8 * Math.abs(lxx)) || (vt[i] && lxx > 0.022 && lxx > 1.8 * Math.abs(lyy))) { k++; pix.push(i); }
+    }
+    raw.wrinkles = k / Math.max(1, n); S.wrinkles = sc(raw.wrinkles, 0.01, 0.08); layers.wrinkles = paint("wrinkles", pix, 230); }
+  // 9 dark circles, 10 eye bags, 11 tear trough: shading of under-eye bands vs cheeks
+  { const lu = mean(L, or("underR", "underL")), lb = mean(L, or("bagR", "bagL")), ls = mean(L, or("shadowR", "shadowL")), lt = mean(L, or("troughR", "troughL"));
+    raw.darkCircles = (Lref - lu) / Lref; S.darkCircles = sc(raw.darkCircles, 0.04, 0.2);
+    raw.eyeBags = (lb - ls) / Lref + Math.max(0, (Lref - ls) / Lref - 0.08); S.eyeBags = sc(raw.eyeBags, 0.0, 0.14);
+    raw.tearTrough = (Lref - lt) / Lref; S.tearTrough = sc(raw.tearTrough, 0.05, 0.24);
+    layers.darkCircles = outline(layer(), [polys.underR, polys.underL], "darkCircles", .3);
+    layers.eyeBags = outline(outline(layer(), [polys.bagR, polys.bagL], "eyeBags", .3), [polys.shadowR, polys.shadowL], "tearTrough", .2);
+    layers.tearTrough = outline(layer(), [polys.troughR, polys.troughL], "tearTrough", .35); }
+  // 12 upper eyelid, 13 lower eyelid: geometry from landmarks
+  const eyeLayer = (key, which) => { const cv = layer(), gx = cv.getContext("2d"); gx.lineWidth = Math.max(1.5, W / 220); gx.strokeStyle = LAYER_COLOR[key]; gx.fillStyle = LAYER_COLOR[key];
+    for (const e of [eyes.R, eyes.L]) {
+      if (e.c) { gx.beginPath(); gx.arc(e.c[0], e.c[1], e.r, 0, 7); gx.stroke(); gx.beginPath(); gx.arc(e.c[0], e.c[1], 2, 0, 7); gx.fill(); }
+      const p = which === "up" ? e.up : e.low; gx.beginPath(); gx.moveTo(p[0] - e.r * 1.4, p[1]); gx.lineTo(p[0] + e.r * 1.4, p[1]); gx.stroke();
+      if (e.c) { gx.setLineDash([3, 3]); gx.beginPath(); gx.moveTo(e.c[0], e.c[1]); gx.lineTo(p[0], p[1]); gx.stroke(); gx.setLineDash([]); }
+      if (which === "low") { gx.beginPath(); gx.moveTo(...e.inner); gx.lineTo(...e.outer); gx.stroke(); }
+    } return cv; };
+  if (eyes) {
+    const avg = f => (f(eyes.R) + f(eyes.L)) / 2;
+    if (eyes.R.mrd1 != null) {
+      raw.upperEyelid = avg(e => e.mrd1); S.upperEyelid = sc(raw.upperEyelid, 0.8, 0.3);
+      raw.lowerEyelid = avg(e => e.mrd2); const tilt = avg(e => e.tilt);
+      S.lowerEyelid = Math.round((sc(raw.lowerEyelid, 0.9, 1.4) + sc(tilt, 5, -5)) / 2);
+    } else {
+      raw.upperEyelid = avg(e => e.aperture); S.upperEyelid = sc(raw.upperEyelid, 0.3, 0.15);
+      raw.lowerEyelid = avg(e => e.tilt); S.lowerEyelid = sc(raw.lowerEyelid, 5, -5);
+    }
+    layers.upperEyelid = eyeLayer("upperEyelid", "up"); layers.lowerEyelid = eyeLayer("lowerEyelid", "low");
+  } else { S.upperEyelid = null; S.lowerEyelid = null; }
+  // 14 firmness: nasolabial shadow + mouth-corner droop + age
   const AGE = { "10대":[17,92], "20대 초반":[23,88], "20대 후반":[28,84], "30대":[35,78], "40대":[45,70], "50대 이상":[55,62] }[a.age] || [30,80];
-  // questionnaire adjustments (self-report)
-  if (has("주름·탄력")) wrinkles -= 4; if (has("모공")) pores -= 4; if (has("잡티·기미")) spots -= 4;
-  if (has("붉은기")) redness -= 4; if (has("건조·각질")) hydration -= 5; if (has("트러블·여드름")) { redness -= 3; pores -= 2; }
-  if (a.feel === "당기고 건조함") hydration -= 8; if (a.feel === "전체가 번들거림") oil -= 10; if (a.feel === "T존만 번들") oil -= 5;
-  if (a.sens === "자주 붉어짐") redness -= 8; else if (a.sens === "가끔 따가움") redness -= 3;
-  let firmness = cl(AGE[1] + (wrinkles - 70) * 0.25 - (has("주름·탄력") ? 4 : 0));
-  [wrinkles, pores, spots, redness, oil, hydration] = [wrinkles, pores, spots, redness, oil, hydration].map(cl);
-  const NOTE = {
-    wrinkles: ["눈가와 이마 결이 매끈한 편이에요.", "눈가에 얕은 잔주름이 보여요.", "눈가와 이마에 주름 결이 뚜렷한 편이에요."],
-    firmness: ["윤곽이 탄탄한 편이에요.", "탄력 관리를 시작하기 좋은 시기예요.", "탄력 저하가 느껴질 수 있는 상태예요."],
-    pores: ["모공이 잘 보이지 않아요.", "코와 볼 안쪽 모공이 조금 보여요.", "코와 볼 모공이 넓어 보여요."],
-    spots: ["톤이 고른 편이에요.", "옅은 잡티가 군데군데 보여요.", "잡티와 색소 침착이 눈에 띄어요."],
-    redness: ["붉은기가 거의 없어요.", "코 주변과 볼에 가벼운 붉은기가 있어요.", "볼과 코 주변 붉은기가 뚜렷해요."],
-    oil: ["유분이 고르게 분포돼 있어요.", "이마와 코에 유분이 조금 몰려 있어요.", "T존 번들거림이 많은 편이에요."],
-    hydration: ["피부결이 촉촉하고 고른 편이에요.", "볼 쪽 결이 살짝 거칠어 보여요.", "건조로 결이 고르지 않아 보여요."]
-  };
-  const lv = s => s >= 75 ? 0 : s >= 55 ? 1 : 2;
-  const M = [["wrinkles","주름",wrinkles],["firmness","탄력",firmness],["pores","모공",pores],["spots","잡티·색소",spots],["redness","붉은기",redness],["oil","유분 균형",oil],["hydration","수분·결",hydration]]
-    .map(([key,label,score]) => ({ key, label, score, note: NOTE[key][lv(score)] }));
-  const overall = Math.round(M.reduce((s, m) => s + m.score, 0) / M.length);
+  { const ln = mean(L, or("nasoR", "nasoL")), nl = (Lref - ln) / Lref; raw.firmness = nl;
+    let f = 0.45 * sc(nl, 0.03, 0.18) + 0.25 * AGE[1];
+    f += 0.3 * (mouth ? sc(mouth.droop, -0.1, 0.6) : AGE[1]);
+    S.firmness = Math.round(f);
+    const cv = outline(layer(), [polys.nasoR, polys.nasoL], "firmness", .3);
+    if (mouth) { const gx = cv.getContext("2d"); gx.strokeStyle = LAYER_COLOR.firmness; gx.lineWidth = Math.max(1.5, W / 220);
+      gx.beginPath(); gx.moveTo(...mouth.cR); gx.lineTo(...mouth.mid); gx.lineTo(...mouth.cL); gx.stroke(); }
+    layers.firmness = cv; }
+  // 15 moisture: a photo cannot measure water content, so combine texture, cheek gloss and the questionnaire
+  { let gl = 0, n = 0; for (let i = 0; i < N; i++) if (cheeks[i]) { n++; if (L[i] > Lref * 1.12 && SAT[i] < 0.25) gl++; }
+    const gloss = gl / Math.max(1, n); raw.moisture = gloss;
+    S.moisture = Math.round(0.55 * S.texture + 0.45 * sc(gloss, 0.03, 0.0));
+    layers.moisture = outline(layer(), [polys.cheekR, polys.cheekL], "moisture", .2); }
+
+  // ----- questionnaire adjustments (self-report) -----
+  const has = x => (a.concern || []).includes(x), adj = (k, v) => { if (S[k] != null) S[k] += v; };
+  if (has("주름·탄력")) { adj("wrinkles", -3); adj("firmness", -3); } if (has("모공")) adj("pores", -3); if (has("잡티·기미")) adj("spots", -3);
+  if (has("붉은기")) adj("redness", -3); if (has("트러블·여드름")) adj("acne", -4); if (has("건조·각질")) { adj("moisture", -6); adj("texture", -2); }
+  if (has("칙칙함")) adj("radiance", -4); if (has("다크서클")) adj("darkCircles", -3);
+  if (a.feel === "당기고 건조함") adj("moisture", -10); if (a.feel === "전체가 번들거림") { adj("oiliness", -10); adj("moisture", 3); } if (a.feel === "T존만 번들") adj("oiliness", -5);
+  if (a.sens === "자주 붉어짐") adj("redness", -6); else if (a.sens === "가끔 따가움") adj("redness", -2);
+  for (const k in S) if (S[k] != null) S[k] = Math.max(25, Math.min(97, Math.round(S[k])));
+
+  const lv = v => v >= 75 ? 0 : v >= 55 ? 1 : 2;
+  const metrics = CONCERNS.flatMap(([gk, , items]) => items.map(([key, label]) => ({
+    key, label, group: gk, score: S[key],
+    note: S[key] == null ? "얼굴 인식이 되지 않아 측정하지 못했어요. 카메라로 다시 찍으면 측정할 수 있어요." : NOTE15[key][lv(S[key])]
+      + (key === "moisture" ? " (사진만으로는 수분을 잴 수 없어 설문을 함께 반영했어요)" : "")
+  })));
+  const scored = metrics.filter(m => m.score != null);
+  const overall = Math.round(scored.reduce((t, m) => t + m.score, 0) / scored.length);
   const skinType = a.sens === "자주 붉어짐" ? "민감성" : a.feel === "당기고 건조함" ? "건성" : a.feel === "전체가 번들거림" ? "지성" : a.feel === "T존만 번들" ? "복합성"
-    : oil < 60 ? (hydration < 65 ? "복합성" : "지성") : hydration < 60 ? "건성" : "중성";
-  const skinAge = Math.max(15, AGE[0] + Math.round((72 - (wrinkles + firmness) / 2) / 4));
+    : S.oiliness < 60 ? (S.moisture < 65 ? "복합성" : "지성") : S.moisture < 60 ? "건성" : "중성";
+  const ageKeys = ["wrinkles", "firmness", "spots", "eyeBags", "tearTrough"].filter(k => S[k] != null);
+  const ageDev = ageKeys.reduce((t, k) => t + S[k], 0) / ageKeys.length - AGE[1];
+  const skinAge = Math.max(15, Math.round(AGE[0] - Math.max(-8, Math.min(8, ageDev / 3))));
   // zones
-  const zoneText = k => {
-    const z = Z[k]; if (z.n < 30) return "사진에서 이 부위가 잘 보이지 않았어요.";
-    const s = [[fr(k,"spec") * 4, "유분과 번들거림이 보여요."], [fr(k,"red") * 2.2, "붉은기가 조금 있어요."], [fr(k,"spot") * 4.5, "옅은 잡티가 보여요."], [(z.hf / z.n - 1.6) / 4, "결이 다소 거칠어 보여요."]].sort((p, q) => q[0] - p[0]);
-    return s[0][0] > 0.12 ? s[0][1] : "고르고 특이한 점이 적어요.";
-  };
-  const zones = ["이마","눈가","볼","코·T존","입가·턱"].map(k => ({ zone: k, finding: zoneText(k) }));
-  // routine
-  const worst = [...M].sort((p, q) => p.score - q.score).slice(0, 2).map(m => m.key);
+  const zoneOf = { "이마": ["wrinkles", "oiliness", "spots"], "눈가": ["darkCircles", "eyeBags", "tearTrough", "wrinkles"], "볼": ["redness", "pores", "spots", "acne", "texture"], "코·T존": ["oiliness", "pores", "redness"], "입가·턱": ["firmness", "acne"] };
+  const zones = Object.entries(zoneOf).map(([zone, ks]) => {
+    const w = ks.filter(k => S[k] != null).sort((p, q) => S[p] - S[q])[0];
+    return { zone, finding: S[w] >= 75 ? "고르고 특이한 점이 적어요." : `${LABEL[w]}: ${NOTE15[w][lv(S[w])]}` };
+  });
+  // routine from the two lowest skincare-addressable scores
   const sens = a.sens !== "거의 없음" || skinType === "민감성";
-  const SER = { wrinkles:["펩타이드 세럼","잔주름 부위에 톡톡 두드려 흡수시켜 주세요.",["펩타이드","아데노신"]], firmness:["펩타이드 세럼","턱선을 따라 끌어올리듯 발라 주세요.",["펩타이드","아데노신"]],
-    pores:["모공 세럼","T존 위주로 얇게 펴 발라 주세요.",["나이아신아마이드","징크"]], spots:["비타민C 세럼","잡티 부위에 한 번 더 얹어 주세요.",["비타민C","나이아신아마이드"]],
-    redness:["진정 세럼","붉은 부위에 문지르지 말고 눌러 흡수시켜 주세요.",["센텔라","판테놀"]], oil:["가벼운 수분 에센스","유분 많은 부위는 소량만 써 주세요.",["나이아신아마이드","히알루론산"]],
-    hydration:["보습 앰플","세안 직후 물기가 남았을 때 발라 주세요.",["히알루론산","글리세린"]] };
-  const NIGHT = { wrinkles:["레티놀 세럼 (격일)", sens ? "저농도로 주 2회부터 시작하고 눈가는 피해 주세요." : "저농도로 시작해 적응되면 횟수를 늘려 주세요.", ["레티놀"]],
-    firmness:["레티놀 세럼 (격일)","저농도로 시작해 적응되면 횟수를 늘려 주세요.",["레티놀","펩타이드"]],
-    pores:["BHA 토너 (주 2~3회)","코와 이마에만 화장솜으로 닦아 주세요.",["살리실릭애씨드"]], spots:["미백 세럼","잡티 부위 위주로 꾸준히 발라 주세요.",["트라넥삼산","알부틴"]],
-    redness:["장벽 진정 크림","얇게 여러 번 레이어링해 주세요.",["세라마이드","센텔라"]], oil:["BHA 토너 (주 2회)","T존에만 사용해 주세요.",["살리실릭애씨드"]],
-    hydration:["수면팩 (주 2~3회)","마지막 단계에 도톰하게 얹어 주세요.",["세라마이드","스쿠알란"]] };
-  const step = ([s, t, ing]) => ({ step: s, tip: t, ingredients: ing });
+  const SER = { spots:["비타민C 세럼","잡티 부위에 한 번 더 얹어 주세요.",["비타민C","나이아신아마이드"]], redness:["진정 세럼","붉은 부위에 문지르지 말고 눌러 흡수시켜 주세요.",["센텔라","판테놀"]],
+    acne:["트러블 진정 세럼","트러블 부위 위주로 얇게 발라 주세요.",["나이아신아마이드","징크"]], pores:["모공 세럼","T존 위주로 얇게 펴 발라 주세요.",["나이아신아마이드","징크"]],
+    texture:["결 정돈 에센스","화장솜 없이 손으로 가볍게 두드려 주세요.",[sens ? "PHA" : "락틱애씨드","판테놀"]], radiance:["비타민C 세럼","얼굴 전체에 얇게 펴 발라 주세요.",["비타민C","나이아신아마이드"]],
+    oiliness:["가벼운 수분 에센스","유분 많은 부위는 소량만 써 주세요.",["나이아신아마이드","히알루론산"]], moisture:["보습 앰플","세안 직후 물기가 남았을 때 발라 주세요.",["히알루론산","글리세린"]],
+    wrinkles:["펩타이드 세럼","잔주름 부위에 톡톡 두드려 흡수시켜 주세요.",["펩타이드","아데노신"]], firmness:["펩타이드 세럼","턱선을 따라 끌어올리듯 발라 주세요.",["펩타이드","아데노신"]],
+    darkCircles:["비타민C 아이크림","눈 밑에 약지로 가볍게 두드려 주세요.",["비타민C 유도체","나이아신아마이드"]], eyeBags:["카페인 아이 세럼","냉장 보관해 아침에 눈 밑에 발라 주세요.",["카페인","펩타이드"]],
+    tearTrough:["보습 아이크림","눈 앞머리 아래에 소량을 두드려 주세요.",["히알루론산","펩타이드"]] };
+  const NIGHT = { spots:["미백 세럼","잡티 부위 위주로 꾸준히 발라 주세요.",["트라넥삼산","알부틴"]], redness:["장벽 진정 크림","얇게 여러 번 레이어링해 주세요.",["세라마이드","센텔라"]],
+    acne:["BHA 스팟 케어","트러블 부위에만 소량 발라 주세요.",["살리실릭애씨드"]], pores:["BHA 토너 (주 2~3회)","코와 이마에만 화장솜으로 닦아 주세요.",["살리실릭애씨드"]],
+    texture:[sens ? "PHA 토너 (주 2회)" : "AHA 토너 (주 2회)","자극이 느껴지면 횟수를 줄여 주세요.",[sens ? "글루코노락톤" : "글리콜릭애씨드"]], radiance:["각질 정돈 토너 (주 2회)","결이 정돈되면 톤도 맑아 보여요.",["PHA","나이아신아마이드"]],
+    oiliness:["BHA 토너 (주 2회)","T존에만 사용해 주세요.",["살리실릭애씨드"]], moisture:["수면팩 (주 2~3회)","마지막 단계에 도톰하게 얹어 주세요.",["세라마이드","스쿠알란"]],
+    wrinkles:["레티놀 세럼 (격일)", sens ? "저농도로 주 2회부터 시작하고 눈가는 피해 주세요." : "저농도로 시작해 적응되면 횟수를 늘려 주세요.",["레티놀"]], firmness:["레티놀 세럼 (격일)","저농도로 시작해 적응되면 횟수를 늘려 주세요.",["레티놀","펩타이드"]],
+    darkCircles:["레티놀 아이크림 (주 2~3회)","저농도 제품으로 눈 밑에만 얇게 발라 주세요.",["레티날","펩타이드"]], eyeBags:["펩타이드 아이크림","눈 밑을 쓸어내리듯 가볍게 발라 주세요.",["펩타이드","아데노신"]],
+    tearTrough:["펩타이드 아이크림","눈 앞머리 아래에 소량만 발라 주세요.",["펩타이드","히알루론산"]] };
+  const worst = metrics.filter(m => m.score != null && SER[m.key]).sort((p, q) => p.score - q.score).slice(0, 2).map(m => m.key);
+  const step = ([st, tip, ing]) => ({ step: st, tip, ingredients: ing });
   const moist = skinType === "지성" ? ["가벼운 젤 크림","얇게 한 겹만 발라 주세요.",["히알루론산","판테놀"]] : skinType === "건성" ? ["보습 크림","건조한 볼에 넉넉히 발라 주세요.",["세라마이드","스쿠알란"]] : ["로션 또는 젤 크림","T존은 얇게, 볼은 넉넉히 발라 주세요.",["히알루론산","세라마이드"]];
   const wash = skinType === "지성" ? ["약산성 젤 세안","미온수로 거품을 충분히 내 씻어 주세요.",["약산성 계면활성제"]] : ["저자극 세안","아침에는 물 세안이나 순한 클렌저로 가볍게 씻어 주세요.",["약산성 계면활성제"]];
   const routine = {
-    am: [step(wash), step(SER[worst[0]]), step(moist), step(["자외선 차단제","SPF50+ PA++++, 외출 시 2~3시간마다 덧발라 주세요.", sens ? ["징크옥사이드"] : ["자외선 차단 성분"]])],
-    pm: [step(["이중 세안","선크림을 쓴 날은 클렌징 오일로 먼저 녹여 주세요.",["클렌징 오일"]]), step(NIGHT[worst[0]]), ...(worst[1] && NIGHT[worst[1]][0] !== NIGHT[worst[0]][0] ? [step(SER[worst[1]])] : []), step(moist)]
+    am: [step(wash), step(SER[worst[0]]), ...(worst[1] && SER[worst[1]][0] !== SER[worst[0]][0] ? [step(SER[worst[1]])] : []), step(moist), step(["자외선 차단제","SPF50+ PA++++, 외출 시 2~3시간마다 덧발라 주세요.", sens ? ["징크옥사이드"] : ["자외선 차단 성분"]])],
+    pm: [step(["이중 세안","선크림을 쓴 날은 클렌징 오일로 먼저 녹여 주세요.",["클렌징 오일"]]), step(NIGHT[worst[0]]), ...(worst[1] && NIGHT[worst[1]][0] !== NIGHT[worst[0]][0] ? [step(NIGHT[worst[1]])] : []), step(moist)]
   };
   const rec = [...new Set(worst.flatMap(k => [...SER[k][2], ...NIGHT[k][2]]).concat(skinType === "건성" ? ["세라마이드"] : skinType === "지성" ? ["나이아신아마이드"] : ["히알루론산"]))].slice(0, 6);
   const avoid = [...(sens ? ["향료","고농도 알코올","고농도 AHA"] : []), ...(skinType === "건성" ? ["강한 세정 성분"] : []), ...(skinType === "지성" ? ["무거운 오일"] : []), "강한 물리적 스크럽"].slice(0, 4);
-  const label = k => M.find(m => m.key === k).label;
+  const low2 = [...scored].sort((p, q) => p.score - q.score).slice(0, 2).map(m => m.label);
+  let seeDoctor = null;
+  if (acneN >= 10) seeDoctor = "붉은 트러블이 여러 개 보여요. 오래가거나 아프다면 피부과 상담을 권해요.";
+  else if (eyes?.R.mrd1 != null && raw.upperEyelid < 0.3) seeDoctor = "윗눈꺼풀이 눈동자를 많이 덮고 있어요. 시야가 답답하게 느껴진다면 안과 상담을 받아 보세요.";
   return {
-    valid: true, mode: "local", skinType, overall, skinAge,
-    summary: `${skinType} 경향의 피부로 보여요. ${label(worst[0])}${worst[1] ? `, ${label(worst[1])}` : ""} 관리를 우선하면 좋겠어요.`,
-    metrics: M, zones, routine, ingredients: { recommend: rec, avoid }, seeDoctor: null
+    valid: true, mode: "local", faceFound: !!lm, skinType, overall, skinAge,
+    summary: `${skinType} 경향의 피부로 보여요. 15개 항목 중 ${low2.join(", ")} 점수가 가장 낮았어요.`,
+    metrics, zones, routine, ingredients: { recommend: rec, avoid }, seeDoctor,
+    viz: { base: c, layers }
   };
 }
 
 // analysis scan animation
 const ZONES = [[151,"이마 · 주름"],[159,"눈가 · 잔주름"],[50,"볼 · 모공"],[280,"볼 · 붉은기"],[4,"코 · 유분"],[199,"턱 · 피부결"]];
 function playScan(blob, lm) {
+  let lmC = null;
   const c = $("scanCanvas"), g = c.getContext("2d"); let img = null, raf2 = 0, alive = true; const t0 = performance.now();
-  createImageBitmap(blob).then(b => { img = b; const k = Math.min(1, 720 / b.width); c.width = b.width * k; c.height = b.height * k; });
+  let crop = null;
+  createImageBitmap(blob).then(b => { img = b;
+    if (lm) { const xs = lm.map(p => p.x * b.width), ys = lm.map(p => p.y * b.height), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      let ch = (y1 - y0) * 1.45, cw = ch * 3 / 4; if (cw < (x1 - x0) * 1.3) { cw = (x1 - x0) * 1.3; ch = cw * 4 / 3; }
+      crop = { x: (x0 + x1) / 2 - cw / 2, y: (y0 + y1) / 2 - ch / 2, w: cw, h: ch };
+    } else { let cw = b.width, ch = b.height; if (cw / ch > 3 / 4) cw = ch * 3 / 4; else ch = cw * 4 / 3; crop = { x: (b.width - cw) / 2, y: (b.height - ch) / 2, w: cw, h: ch }; }
+    c.width = 540; c.height = 720; });
+  const toC = p => ({ x: (p.x * img.width - crop.x) / crop.w, y: (p.y * img.height - crop.y) / crop.h });
   const acc = "#7fe3d6";
   const frame = () => {
     if (!alive) return;
     const t = performance.now() - t0;
     if (img) {
       const W = c.width, H = c.height;
-      g.drawImage(img, 0, 0, W, H); g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(0, 0, W, H);
+      g.fillStyle = "#0b1413"; g.fillRect(0, 0, W, H); g.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, W, H); g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(0, 0, W, H);
       if (lm) {
-        drawFace(g, lm, W, H, t, Math.min(1, t / 600));
-        const zi = Math.floor(t / 800) % ZONES.length, [k, label] = ZONES[zi], p = lm[k], ph = (t % 800) / 800;
+        const lmc = lmC || (lmC = lm.map(toC));
+        drawFace(g, lmc, W, H, t, Math.min(1, t / 600));
+        const zi = Math.floor(t / 800) % ZONES.length, [k, label] = ZONES[zi], p = lmc[k], ph = (t % 800) / 800;
         $("scanChip").textContent = label + " 측정 중";
         g.strokeStyle = acc; g.lineWidth = Math.max(2, W / 260);
         const R = W * (0.05 + 0.03 * ph); g.globalAlpha = 1 - ph * 0.6;
@@ -530,7 +770,7 @@ function capturePhoto() {
   const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
   const g = c.getContext("2d"); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(v, 0, 0);
   const lm = lastLm ? lastLm.map(p => ({ x: 1 - p.x, y: p.y })) : null;
-  c.toBlob(b => { stopCam(); setPhoto(b).then(() => { photoLm = lm; }); }, "image/jpeg", 0.92);
+  c.toBlob(b => { stopCam(); setPhoto(b).then(() => { photoLm = lm; photoSrc = "camera"; }); }, "image/jpeg", 0.92);
 }
 $("camBtn").onclick = async () => {
   $("photoErr").hidden = true;
@@ -611,11 +851,19 @@ const ERR = {
 $("analyzeBtn").onclick = async () => {
   show("s-load");
   ctl = new AbortController();
+  if (!photoLm && window.FaceScan && !window.FaceScan.failed) {
+    $("scanChip").textContent = "얼굴 찾는 중";
+    try {
+      await Promise.race([window.FaceScan.load(), new Promise((_, no) => setTimeout(no, 12000))]);
+      photoLm = window.FaceScan.detectImage(await createImageBitmap(photo));
+    } catch {}
+  }
   const stopAnim = playScan(photo, photoLm), t0 = Date.now();
   try {
     const r = $("apiKey").value.trim()
       ? await analyzeWithApi(buildPrompt(answers), photo, ctl.signal)
-      : await new Promise(res => setTimeout(res, 4200)).then(() => localAnalyze(photo, answers, photoLm));
+      : await new Promise(res => setTimeout(res, 4200)).then(() => localAnalyze(photo, answers, photoLm, photoSrc === "camera"));
+    if (r && r.valid !== false && !r.viz && Array.isArray(r.metrics)) r.metrics.forEach(m => { const g = CONCERNS.find(c => c[2].some(it => it[0] === m.key)); if (g) m.group = g[0]; });
     stopAnim();
     if (ctl.signal.aborted) return;
     if (!r || r.valid === false) {
@@ -649,14 +897,22 @@ function buildPrompt(a) {
  "overall": 0~100 정수 (높을수록 건강),
  "skinAge": 정수 (사진에서 보이는 피부 나이 추정치),
  "summary": "2문장 이내 총평",
- "metrics": [  // 정확히 이 7개, 이 순서. score는 0~100, 높을수록 좋은 상태
+ "metrics": [  // 정확히 이 15개, 이 순서. score는 0~100, 높을수록 좋은 상태. 사진으로 판단이 어려우면 설문을 근거로 추정하고 note에 그렇게 적으세요
+   {"key":"spots","label":"잡티","score":0,"note":"한 문장"},
+   {"key":"redness","label":"붉은기","score":0,"note":"한 문장"},
+   {"key":"acne","label":"트러블","score":0,"note":"한 문장"},
+   {"key":"pores","label":"모공","score":0,"note":"한 문장"},
+   {"key":"texture","label":"피부결","score":0,"note":"한 문장"},
+   {"key":"radiance","label":"광채","score":0,"note":"한 문장"},
+   {"key":"oiliness","label":"유분","score":0,"note":"한 문장"},
+   {"key":"moisture","label":"수분","score":0,"note":"한 문장"},
    {"key":"wrinkles","label":"주름","score":0,"note":"한 문장"},
-   {"key":"firmness","label":"탄력","score":0,"note":""},
-   {"key":"pores","label":"모공","score":0,"note":""},
-   {"key":"spots","label":"잡티·색소","score":0,"note":""},
-   {"key":"redness","label":"붉은기","score":0,"note":""},
-   {"key":"oil","label":"유분 균형","score":0,"note":""},
-   {"key":"hydration","label":"수분·결","score":0,"note":""}
+   {"key":"firmness","label":"탄력","score":0,"note":"한 문장"},
+   {"key":"darkCircles","label":"다크서클","score":0,"note":"한 문장"},
+   {"key":"eyeBags","label":"눈밑 지방","score":0,"note":"한 문장"},
+   {"key":"tearTrough","label":"눈물고랑","score":0,"note":"한 문장"},
+   {"key":"upperEyelid","label":"윗눈꺼풀 처짐","score":0,"note":"한 문장"},
+   {"key":"lowerEyelid","label":"아래눈꺼풀 처짐","score":0,"note":"한 문장"}
  ],
  "zones": [ {"zone":"이마","finding":"한 문장"}, {"zone":"눈가","finding":""}, {"zone":"볼","finding":""}, {"zone":"코·T존","finding":""}, {"zone":"입가·턱","finding":""} ],
  "routine": {
@@ -703,19 +959,37 @@ function renderReport(r, a, isSample) {
         h("div", {}, h("dt", {text:"추정 피부 나이"}), h("dd", {text: r.skinAge ? `${r.skinAge}세` : "-"})),
         h("div", {style:"grid-column:1/3"}, h("dt", {text:"우선 관리"}), h("dd", {style:"font-size:17px", text: focus || "-"})))),
     h("p", {text: r.summary || ""}),
-    r.mode === "local" ? h("p", {class:"note", text:"간이 분석은 사진의 밝기와 색 분포, 설문 답변으로 점수를 계산해요. 조명에 따라 결과가 달라질 수 있어요."}) : null
+    r.mode === "local" ? h("p", {class:"note", text:"간이 분석은 얼굴 인식으로 부위를 나눈 뒤 사진의 밝기·색·결을 측정하고 설문을 더해 점수를 계산해요. 피부과 기기처럼 검증된 수치가 아니며, 조명과 카메라에 따라 달라질 수 있어요."}) : null
   ));
 
   if (r.seeDoctor) out.append(h("div", {class:"doctor"}, h("b", {text:"피부과 상담 권장 "}), r.seeDoctor));
 
-  out.append(h("div", {class:"card stack"}, h("h2", {text:"7가지 지표"}),
-    h("p", {class:"note", text:"점수가 높을수록 좋은 상태예요. 75 이상 좋음, 55~74 보통, 54 이하 관리 필요."}),
-    ...metrics.map(m => { const s = clamp(m.score); return h("div", {class:"metric"},
+  const groupsOf = CONCERNS.map(([gk, gl, items]) => [gl, metrics.filter(m => m.group === gk || (!m.group && items.some(it => it[1] === m.label || it[0] === m.key)))]).filter(g => g[1].length);
+  const flat = groupsOf.length ? null : metrics;
+  let mapCv = null, mapLabel = null, drawMap = () => {};
+  if (r.viz) {
+    const { base, layers } = r.viz;
+    mapCv = h("canvas", {width: base.width, height: base.height, role:"img", "aria-label":"피부 맵"}); mapLabel = h("span", {class:"maplabel"});
+    const gx = mapCv.getContext("2d");
+    drawMap = key => { gx.drawImage(base, 0, 0); gx.fillStyle = "rgba(0,0,0,.28)"; gx.fillRect(0, 0, base.width, base.height);
+      if (layers[key]) gx.drawImage(layers[key], 0, 0); mapLabel.textContent = LABEL[key] || "";
+      out.querySelectorAll("button.metric").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.key === key))); };
+  }
+  const row = m => { const ok = m.score != null, s = clamp(m.score), canShow = !!(r.viz && r.viz.layers[m.key]);
+    const el = h(canShow ? "button" : "div", {class:"metric", "data-key": m.key || "", ...(canShow ? {type:"button", "aria-pressed":"false"} : {})},
       h("span", {class:"lab", text: m.label}),
-      h("span", {class:"bar", role:"img", "aria-label": `${m.label} ${s}점, ${word(s)}`}, h("i", {style:`width:${s}%;background:${tone(s)}`})),
-      h("span", {class:"val", text: s}),
-      h("span", {class:"mnote", text: m.note || ""})); })
+      h("span", {class:"bar", role:"img", "aria-label": ok ? `${m.label} ${s}점, ${word(s)}` : `${m.label} 측정 불가`}, h("i", {style: ok ? `width:${s}%;background:${tone(s)}` : "width:0"})),
+      h("span", {class:"val", text: ok ? s : "–"}),
+      h("span", {class:"mnote", text: m.note || ""}));
+    if (canShow) el.onclick = () => { drawMap(m.key); mapCv.scrollIntoView({block:"nearest", behavior:"smooth"}); };
+    return el; };
+  out.append(h("div", {class:"card stack"}, h("h2", {text: `${metrics.length}가지 항목`}),
+    h("p", {class:"note", text:"점수가 높을수록 좋은 상태예요. 75 이상 좋음, 55~74 보통, 54 이하 관리 필요."}),
+    mapCv ? h("div", {class:"stack"}, h("div", {class:"mapwrap"}, mapCv, mapLabel), h("p", {class:"note", text:"항목을 누르면 사진에서 측정된 위치가 표시돼요."})) : null,
+    ...(flat ? flat.map(row) : groupsOf.map(([gl, ms]) => h("div", {class:"mgroup"}, h("h3", {text: gl}), ...ms.map(row))))
   ));
+  if (r.viz) { const firstKey = [...metrics].filter(m => m.score != null && r.viz.layers[m.key]).sort((p, q) => p.score - q.score)[0]?.key; if (firstKey) drawMap(firstKey); }
+  if (r.mode === "local" && !r.faceFound) out.append(h("p", {class:"note", text:"얼굴 인식 모델을 불러오지 못해 눈꺼풀 항목은 측정하지 못했어요. 인터넷 연결을 확인하고 다시 찍어 주세요."}));
 
   if (Array.isArray(r.zones) && r.zones.length) out.append(h("div", {class:"card stack"}, h("h2", {text:"부위별 소견"}),
     h("div", {class:"zones"}, ...r.zones.map(z => h("div", {class:"zone"}, h("b", {text: z.zone}), z.finding || "")))));
@@ -748,16 +1022,24 @@ function renderReport(r, a, isSample) {
 }
 
 const SAMPLE = {
-  skinType: "복합성", overall: 68, skinAge: 31,
+  skinType: "복합성", overall: 70, skinAge: 31,
   summary: "전반적으로 결은 고른 편이지만 T존 유분과 볼 쪽 건조함이 함께 보여요. 코 주변 모공과 광대 잡티를 우선 관리하면 좋겠습니다.",
   metrics: [
-    {label:"주름", score:78, note:"눈가에 얕은 잔주름이 약간 보여요."},
-    {label:"탄력", score:74, note:"턱선이 또렷하고 처짐은 거의 없어요."},
-    {label:"모공", score:52, note:"코와 볼 안쪽 모공이 넓어 보여요."},
-    {label:"잡티·색소", score:58, note:"광대 위로 옅은 색소 침착이 있어요."},
-    {label:"붉은기", score:70, note:"콧방울 주변에 가벼운 붉은기가 있어요."},
-    {label:"유분 균형", score:61, note:"이마와 코에 유분이 몰려 있어요."},
-    {label:"수분·결", score:66, note:"볼 바깥쪽에 미세 각질이 보여요."}
+    {key:"spots", label:"잡티", score:58, note:"광대 위로 옅은 색소 침착이 있어요."},
+    {key:"redness", label:"붉은기", score:70, note:"콧방울 주변에 가벼운 붉은기가 있어요."},
+    {key:"acne", label:"트러블", score:82, note:"턱에 작은 트러블이 하나 보여요."},
+    {key:"pores", label:"모공", score:52, note:"코와 볼 안쪽 모공이 넓어 보여요."},
+    {key:"texture", label:"피부결", score:66, note:"볼 바깥쪽에 미세 각질이 보여요."},
+    {key:"radiance", label:"광채", score:71, note:"톤이 약간 고르지 않아요."},
+    {key:"oiliness", label:"유분", score:61, note:"이마와 코에 유분이 몰려 있어요."},
+    {key:"moisture", label:"수분", score:64, note:"볼 쪽 수분이 조금 부족해 보여요."},
+    {key:"wrinkles", label:"주름", score:78, note:"눈가에 얕은 잔주름이 약간 보여요."},
+    {key:"firmness", label:"탄력", score:74, note:"팔자 주름이 옅게 보여요."},
+    {key:"darkCircles", label:"다크서클", score:62, note:"눈 밑이 볼보다 조금 어두워요."},
+    {key:"eyeBags", label:"눈밑 지방", score:80, note:"눈 밑이 평평한 편이에요."},
+    {key:"tearTrough", label:"눈물고랑", score:72, note:"눈 앞머리 아래가 살짝 꺼져 보여요."},
+    {key:"upperEyelid", label:"윗눈꺼풀 처짐", score:88, note:"눈꺼풀이 눈동자를 거의 가리지 않아요."},
+    {key:"lowerEyelid", label:"아래눈꺼풀 처짐", score:85, note:"아래 눈꺼풀이 탄탄하게 받쳐 주고 있어요."}
   ],
   zones: [
     {zone:"이마", finding:"유분이 많고 작은 모공이 보여요."},
@@ -788,7 +1070,8 @@ const SAMPLE = {
 
 <script type="module">
 import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
-let lm = null, loading = null;
+let lm = null, loading = null, lastT = 0;
+const ts = t => { t = Math.max(t, lastT + 1); lastT = t; return t; };
 const make = async (fs, delegate) => FaceLandmarker.createFromOptions(fs, { baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate }, runningMode: "VIDEO", numFaces: 1 });
 window.FaceScan = {
   TESS: FaceLandmarker.FACE_LANDMARKS_TESSELATION, ready: false,
@@ -796,7 +1079,8 @@ window.FaceScan = {
     const fs = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
     try { lm = await make(fs, "GPU"); } catch { lm = await make(fs, "CPU"); }
     window.FaceScan.ready = true; return lm; })(); },
-  detect(video, t) { return lm ? (lm.detectForVideo(video, t).faceLandmarks[0] || null) : null; }
+  detect(video, t) { return lm ? (lm.detectForVideo(video, ts(t)).faceLandmarks[0] || null) : null; },
+  detectImage(bmp) { return lm ? (lm.detectForVideo(bmp, ts(performance.now())).faceLandmarks[0] || null) : null; }
 };
 </script>
 </body></html>
