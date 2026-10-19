@@ -67,7 +67,7 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .scanbox{position:relative;aspect-ratio:3/4;width:100%;max-width:340px;margin:0 auto;border-radius:14px;overflow:hidden;background:#0b1413}
 .scanbox canvas{width:100%;height:100%;display:block;object-fit:cover}
 .drop img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
-.drop .guide{position:absolute;inset:12% 20% 14%;border:2px solid rgba(255,255,255,.75);border-radius:50% 50% 46% 46%;pointer-events:none;box-shadow:0 0 0 999px rgba(0,0,0,.18)}
+.drop .guide{position:absolute;inset:16% 18% 21%;border:2px solid rgba(255,255,255,.75);border-radius:50% 50% 50% 50% / 46% 46% 54% 54%;pointer-events:none;box-shadow:0 0 0 999px rgba(0,0,0,.18)}
 .tips{font-size:13px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;padding-left:18px;margin:0}
 .note{font-size:12.5px;color:var(--muted)}
 .err{color:var(--bad);font-size:14px}
@@ -384,7 +384,7 @@ async function localAnalyze(blob, a, lm, allowFallback) {
     // no landmarks: assume the face fills the guide oval of a 3:4 crop
     cw = IW; ch = IH; x0 = 0; y0 = 0;
     if (IW / IH > 3 / 4) { cw = IH * 3 / 4; x0 = (IW - cw) / 2; } else { ch = IW * 4 / 3; y0 = (IH - ch) / 2; }
-    var s = FACEW / (cw * 0.6);
+    var s = FACEW / (cw * 0.64);
   }
   const W = Math.round(cw * s), H = Math.round(ch * s), N = W * H;
   const c = document.createElement("canvas"); c.width = W; c.height = H;
@@ -429,7 +429,7 @@ async function localAnalyze(blob, a, lm, allowFallback) {
     naso = [band(129, 61), band(358, 291)];
     polys.nasoR = naso[0]; polys.nasoL = naso[1];
   } else {
-    const cx = W / 2, cy = H * 0.49, rx = W * 0.3, ry = H * 0.37;
+    const cx = W / 2, cy = H * 0.475, rx = W * 0.32, ry = H * 0.315;
     const R = (u0, u1, v0, v1) => [[cx + u0 * rx, cy + v0 * ry], [cx + u1 * rx, cy + v0 * ry], [cx + u1 * rx, cy + v1 * ry], [cx + u0 * rx, cy + v1 * ry]];
     ovalP = Array.from({ length: 48 }, (_, i) => [cx + Math.cos(i / 48 * 6.283) * rx, cy + Math.sin(i / 48 * 6.283) * ry]);
     holesP = [R(-.58, -.14, -.32, -.1), R(.14, .58, -.32, -.1), R(-.36, .36, .4, .64), R(-.62, -.12, -.48, -.33), R(.12, .62, -.48, -.33)];
@@ -738,7 +738,7 @@ function faceStatus(pts, v) {
   const fw = (b - a) / visW, fx = ((a + b) / 2 - x0) / visW, fy = ((c + d) / 2 - y0) / visH;
   if (fw < 0.45) return "조금 더 가까이 와 주세요";
   if (fw > 0.8) return "조금 뒤로 물러나 주세요";
-  if (Math.abs(fx - .5) > .1 || Math.abs(fy - .5) > .12) return "얼굴을 타원 가운데에 맞춰 주세요";
+  if (Math.abs(fx - .5) > .1 || Math.abs(fy - .475) > .1) return "얼굴을 타원 가운데에 맞춰 주세요";
   const yaw = (pts[1].x - (pts[234].x + pts[454].x) / 2) / (pts[454].x - pts[234].x);
   if (Math.abs(yaw) > .09) return "고개를 돌리지 말고 정면을 봐 주세요";
   return "";
