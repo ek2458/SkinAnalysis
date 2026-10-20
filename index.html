@@ -72,6 +72,7 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .hrow{display:grid;grid-template-columns:36px 1fr auto auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:6px 0;font-size:13.5px;font-variant-numeric:tabular-nums}
 .hrow img,.hthumb{width:36px;height:48px;object-fit:cover;border-radius:6px;background:var(--line);display:block}
 .hrow .hval{font-family:var(--f-mono)}
+.condbox ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:14px}
 .testbanner{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:14px}
 .mline{grid-column:2 / 4;font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-top:-4px}
 .st-better{color:var(--good)} .st-worse{color:var(--bad)} .st-same{color:var(--muted)} .st-up,.st-down{color:var(--fg)}
@@ -290,7 +291,7 @@ const MEAS = [
   { key: "ita", label: "피부톤 ITA°", unit: "°", dir: 0, dec: 1, sd: 1.5, concern: null,
     how: "볼 피부의 CIELAB 색값으로 계산한 개인 유형 각도(ITA° = arctan((L*−50)/b*)). 피부과 색채 연구에서 피부 밝기를 나타내는 표준 지표예요. 값이 클수록 밝은 톤이에요." },
   { key: "aStar", label: "붉은기 a*", unit: "", dir: 1, dec: 1, sd: 0.7, concern: "redness",
-    how: "볼과 코 피부의 CIELAB a* 평균값. 붉은 정도(홍반)를 나타내는 색 지표로 연구에서 널리 써요." },
+    how: "볼과 코 피부의 CIELAB a* 평균값. 붉은 정도(홍반)를 나타내는 색 지표로 연구에서 널리 써요. 조명 색의 영향을 줄이려고 눈 흰자를 기준으로 색을 먼저 보정해요." },
   { key: "spotPct", label: "잡티 면적", unit: "%", dir: 1, dec: 2, sd: 0.25, concern: "spots",
     how: "이마·볼·코·턱 피부 중 주변보다 뚜렷하게 어둡고 붉지 않은 반점이 차지하는 면적 비율." },
   { key: "acneCount", label: "붉은 트러블", unit: "개", dir: 1, dec: 0, sd: 1, concern: "acne",
@@ -308,11 +309,11 @@ const MEAS = [
   { key: "nasoDL", label: "팔자 그늘 ΔL*", unit: "", dir: 1, dec: 1, sd: 1.0, concern: "firmness",
     how: "볼과 팔자 부위의 CIELAB 밝기(L*) 차이. 클수록 팔자 주름 그늘이 짙어요." },
   { key: "dcDL", label: "눈 밑 어두움 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.8, concern: "darkCircles",
-    how: "볼과 눈 밑 띠의 L* 차이. 눈가 색소 침착 연구에서 쓰는 방식이에요." },
-  { key: "bagDL", label: "눈밑 볼록 대비 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.8, concern: "eyeBags",
-    how: "눈 바로 아래(볼록한 부분)와 그 아래 그림자 띠의 L* 차이." },
-  { key: "troughDL", label: "눈물고랑 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.9, concern: "tearTrough",
-    how: "볼과 눈 앞머리 아래 부위의 L* 차이." },
+    how: "볼과 눈 밑 띠의 L* 차이. 눈가 색소 침착 연구에서 쓰는 방식이에요. 눈 밑 색이 볼과 달라도 빠지지 않게 따로 잘라 재요." },
+  { key: "bagDL", label: "눈밑 볼록 깊이 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.8, concern: "eyeBags",
+    how: "아래 눈꺼풀에서 볼 쪽으로 내려가며 밝기(L*)를 잰 단면에서, 볼록한 부분의 밝기와 그 아래 그림자 골의 밝기 차이. 볼록함이 없으면 0이에요." },
+  { key: "troughDL", label: "눈물고랑 대비 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.8, concern: "tearTrough",
+    how: "눈 앞머리에서 볼 쪽으로 비스듬히 내려가는 선 중 가장 어두운 선을 찾아, 그 선과 양옆 피부의 L* 차이를 잰 값. 전체 조명 기울기는 양옆이 상쇄해요." },
   { key: "mrd1", label: "MRD1", unit: "mm", dir: -1, dec: 1, sd: 0.3, concern: "upperEyelid",
     how: "눈동자 중심에서 윗눈꺼풀 가장자리까지의 거리(margin reflex distance 1). 눈꺼풀 처짐 평가에 쓰는 임상 지표로, 보통 4~5mm예요." },
   { key: "mrd2", label: "MRD2", unit: "mm", dir: 1, dec: 1, sd: 0.3, concern: "lowerEyelid",
@@ -622,12 +623,13 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   if (!lm && !allowFallback) return { valid: false, reason: window.FaceScan?.ready ? "사진에서 얼굴을 찾지 못했어요. 얼굴이 정면으로 크게 나온 사진을 올려 주세요." : "얼굴 인식 모델을 불러오지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요." };
   const img = await createImageBitmap(blob), IW = img.width, IH = img.height, FACEW = 360;
   // ----- crop around the face -----
-  let x0, y0, cw, ch, polys = {}, holesP = [], ovalP, eyes = null, mouth = null, naso = null;
+  let x0, y0, cw, ch, polys = {}, holesP = [], ovalP, eyes = null, mouth = null, naso = null, faceN = [0, 1], faceU = [1, 0], faceWpx = 0;
+  const cond = []; // photo conditions that affect specific items
   if (lm) {
     const ox = OVAL_IDX.map(k => lm[k].x * IW), oy = OVAL_IDX.map(k => lm[k].y * IH);
     const fx0 = Math.min(...ox), fx1 = Math.max(...ox), fy0 = Math.min(...oy), fy1 = Math.max(...oy), fw = fx1 - fx0, fh = fy1 - fy0;
     x0 = Math.max(0, fx0 - fw * .12); y0 = Math.max(0, fy0 - fh * .1); cw = Math.min(IW, fx1 + fw * .12) - x0; ch = Math.min(IH, fy1 + fh * .08) - y0;
-    var s = FACEW / fw;
+    var s = FACEW / fw; faceWpx = fw;
   } else {
     // no landmarks: assume the face fills the guide oval of a 3:4 crop
     cw = IW; ch = IH; x0 = 0; y0 = 0;
@@ -667,7 +669,13 @@ async function localAnalyze(blob, a, lm, allowFallback) {
       e.tilt = Math.atan2(upv, along) * 180 / Math.PI;
       e.aperture = (dot(sub(e.low, e.up), n)) / Math.hypot(...v);
     }
-    eyes = E;
+    eyes = E; faceN = n; faceU = u;
+    { // nostrils and their rims are not skin to measure
+      const A = P(98), B = P(327), tip = P(1), sn = P(2), nw = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1, lat = [(B[0] - A[0]) / nw, (B[1] - A[1]) / nw];
+      const top = [(tip[0] + sn[0]) / 2, (tip[1] + sn[1]) / 2], ext = 0.15 * nw;
+      const at = (p0, la, depthTo, extra) => { const dd = dot(sub(depthTo, p0), n) + extra; return [p0[0] + lat[0] * la + n[0] * dd, p0[1] + lat[1] * la + n[1] * dd]; };
+      holesP.push([at(A, -ext, top, 0), at(B, ext, top, 0), at(B, ext, sn, 0.12 * nw), at(A, -ext, sn, 0.12 * nw)]);
+    }
     const ir = E.R.r ? (E.R.r + E.L.r) / 2 : el * 0.09;
     const mid = [(P(13)[0] + P(14)[0]) / 2, (P(13)[1] + P(14)[1]) / 2];
     mouth = { mid, cR: P(61), cL: P(291), droop: (dot(sub(P(61), mid), n) + dot(sub(P(291), mid), n)) / 2 / ir, ir };
@@ -702,6 +710,31 @@ async function localAnalyze(blob, a, lm, allowFallback) {
       for (const p of holesP) { path(p); mg.fill(); mg.stroke(); } mg.globalCompositeOperation = "source-over"; }
     const md = mg.getImageData(0, 0, W, H).data, m = new Uint8Array(N); for (let i = 0; i < N; i++) m[i] = md[i * 4 + 3] > 127; return m;
   };
+  // ----- white balance from the whites of the eyes (removes warm or cool room-light colour) -----
+  let wb = null, wbDbg = null;
+  if (lm) {
+    const em = raster([holesP[0], holesP[1]], false), cand = [];
+    for (let i = 0; i < N; i++) if (em[i]) {
+      const x = i % W, y = (i - x) / W;
+      if (eyes?.R.c && [eyes.R, eyes.L].some(e => Math.hypot(x - e.c[0], y - e.c[1]) < e.r * 1.08)) continue;
+      const r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+      cand.push([0.299 * r + 0.587 * gg + 0.114 * b, (mx - mn) / (mx + 1), r, gg, b]);
+    }
+    wbDbg = { n: cand.length };
+    if (cand.length >= 40) {
+      cand.sort((p, q) => q[0] - p[0]);
+      const top = cand.slice(0, Math.max(20, Math.round(cand.length * .35))).sort((p, q) => p[1] - q[1]).slice(0, Math.max(10, Math.round(cand.length * .2)));
+      const m = [2, 3, 4].map(j => top.reduce((t, q) => t + q[j], 0) / top.length), TGT = [1.0, 0.96, 0.92]; // healthy sclera is slightly warm, not pure white
+      wbDbg.m = m;
+      const base = (m[0] / TGT[0] + m[1] / TGT[1] + m[2] / TGT[2]) / 3, gains = m.map((v, j) => 1 + 0.6 * (Math.max(0.75, Math.min(1.35, base * TGT[j] / v)) - 1)); // partial correction: sclera samples include some lid shadow and vessels
+      if (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2] > 55) {
+        for (let i = 0; i < N; i++) { d[i * 4] = Math.min(255, d[i * 4] * gains[0]); d[i * 4 + 1] = Math.min(255, d[i * 4 + 1] * gains[1]); d[i * 4 + 2] = Math.min(255, d[i * 4 + 2] * gains[2]); }
+        wb = { gains };
+        if (gains[2] / gains[0] > 1.12) cond.push({ msg: "조명이 노랗고 따뜻한 색이라 눈 흰자를 기준으로 색을 보정했어요.", affects: [] });
+        else if (gains[0] / gains[2] > 1.12) cond.push({ msg: "조명이 푸른 색이라 눈 흰자를 기준으로 색을 보정했어요.", affects: [] });
+      }
+    }
+  }
   const L = new Float32Array(N), RN = new Float32Array(N), SAT = new Float32Array(N), face = raster([ovalP], true), skin = new Uint8Array(N);
   let inFace = 0;
   for (let i = 0; i < N; i++) {
@@ -717,23 +750,34 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   const or = (...ks) => { const m = new Uint8Array(N); for (const k of ks) { const q = M[k]; for (let i = 0; i < N; i++) if (q[i] && skin[i]) m[i] = 1; } return m; };
   const mean = (arr, m) => { let s = 0, n = 0; for (let i = 0; i < N; i++) if (m[i]) { s += arr[i]; n++; } return n ? s / n : NaN; };
   const count = m => { let n = 0; for (let i = 0; i < N; i++) n += m[i]; return n; };
-  const cheeks = or("cheekR", "cheekL"), tz = or("forehead", "nose", "glabella"), broad = or("forehead", "cheekR", "cheekL", "chin", "nose");
+  let cheeks = or("cheekR", "cheekL"), tz = or("forehead", "nose", "glabella"), broad = or("forehead", "cheekR", "cheekL", "chin", "nose");
   const Lref = mean(L, cheeks) || mean(L, skin);
   if (Lref < 55) return { valid: false, reason: "사진이 너무 어두워요. 창가나 밝은 조명 아래에서 다시 찍어 주세요." };
   const B1 = boxBlur(L, W, H, 1), B2 = boxBlur(L, W, H, 2), B4 = boxBlur(L, W, H, 4), B8 = boxBlur(L, W, H, 8), RNb = boxBlur(RN, W, H, 8);
+  let medSat = 0.3; const isHi = i => L[i] > Lref * 1.08 && SAT[i] < medSat * 0.8;
+  const fhArea = count(raster([polys.forehead], true));
   { // tighten the skin mask: colour close to the cheeks, not hair-like texture
     const CB = new Float32Array(N), CR = new Float32Array(N), dev = new Float32Array(N);
     for (let i = 0; i < N; i++) { const r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2];
       CB[i] = 128 - 0.168736 * r - 0.331264 * gg + 0.5 * b; CR[i] = 128 + 0.5 * r - 0.418688 * gg - 0.081312 * b; dev[i] = Math.abs(L[i] - B2[i]); }
     const med = (arr, m) => { const v = []; for (let i = 0; i < N; i++) if (m[i]) v.push(arr[i]); v.sort((p, q) => p - q); return v[v.length >> 1]; };
     const mcb = med(CB, cheeks), mcr = med(CR, cheeks), V = boxBlur(dev, W, H, 5);
-    for (let i = 0; i < N; i++) if (skin[i] && (Math.abs(CB[i] - mcb) > 10 || Math.abs(CR[i] - mcr) > 12 || V[i] / Lref > 0.05 || L[i] < Lref * 0.55)) skin[i] = 0;
+    medSat = med(SAT, cheeks) || 0.3;
+    for (let i = 0; i < N; i++) if (face[i] && !skin[i] && isHi(i)) skin[i] = 1; // shine is skin too
+    for (let i = 0; i < N; i++) if (skin[i] && !isHi(i) && (Math.abs(CB[i] - mcb) > 10 || Math.abs(CR[i] - mcr) > 12 || V[i] / Lref > 0.05 || L[i] < Lref * 0.55)) skin[i] = 0;
     for (const k in M) { const q = M[k]; for (let i = 0; i < N; i++) if (q[i] && !skin[i]) q[i] = 0; }
     // broad dark areas on surface regions are hair or shadow, not skin texture
     for (const k of ["forehead", "glabella", "crowR", "crowL", "cheekR", "cheekL", "nose", "chin"]) { const q = M[k]; if (q) for (let i = 0; i < N; i++) if (q[i] && B8[i] < Lref * 0.8) q[i] = 0; }
-    for (const q of [cheeks, tz, broad]) for (let i = 0; i < N; i++) if (q[i] && (!skin[i] || B8[i] < Lref * 0.8)) q[i] = 0;
   }
+  cheeks = or("cheekR", "cheekL"); tz = or("forehead", "nose", "glabella"); broad = or("forehead", "cheekR", "cheekL", "chin", "nose");
   const B24 = boxBlur(B8, W, H, 16);
+  // CIELAB per pixel (after white balance)
+  const LS = new Float32Array(N), AS = new Float32Array(N);
+  for (let i = 0; i < N; i++) if (face[i]) { const q = rgb2lab(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]); LS[i] = q[0]; AS[i] = q[1]; }
+  const labL = m => { let t = 0, k = 0; for (let i = 0; i < N; i++) if (m[i]) { t += LS[i]; k++; } return k ? t / k : NaN; };
+  // under-eye masks keep their own colour (dark circles differ from cheek colour), only lashes and holes are removed
+  const eyeM = (...ks) => { const m = raster(ks.map(k => polys[k]), true); for (let i = 0; i < N; i++) if (m[i] && (!face[i] || L[i] < Lref * 0.4)) m[i] = 0; return m; };
+  const LSat = (x, y) => { const xi = Math.round(x), yi = Math.round(y); if (xi < 0 || yi < 0 || xi >= W || yi >= H) return NaN; const i = yi * W + xi; return face[i] && L[i] > Lref * 0.4 ? LS[i] : NaN; };
   const raw = {}, layers = {}, S = {};
   const layer = () => { const cv = document.createElement("canvas"); cv.width = W; cv.height = H; return cv; };
   const paint = (key, pix, alpha = 200) => {
@@ -755,10 +799,15 @@ async function localAnalyze(blob, a, lm, allowFallback) {
     const bl = blobs(cand, W, H, 8, 1500), area = bl.reduce((t, o) => t + o.n, 0);
     raw.spots = area / Math.max(1, count(broad)); S.spots = sc(raw.spots, 0.002, 0.03); layers.spots = paint("spots", bl.flatMap(o => o.px)); }
   // 2 redness: diffuse redness on cheeks and nose
-  { const rm = or("cheekR", "cheekL", "nose"), vals = []; for (let i = 0; i < N; i++) if (skin[i]) vals.push(RN[i]); vals.sort((p, q) => p - q);
+  { const rm = or("cheekR", "cheekL", "nose"), vals = []; for (let i = 0; i < N; i++) if (skin[i] && !isHi(i)) vals.push(AS[i]); vals.sort((p, q) => p - q);
     const med = vals[vals.length >> 1] || 0, pix = []; let n = 0, k = 0;
-    for (let i = 0; i < N; i++) if (rm[i]) { n++; if (RN[i] > med + 0.035) { k++; pix.push(i); } }
-    raw.redness = k / Math.max(1, n); S.redness = sc(raw.redness, 0.03, 0.35); layers.redness = paint("redness", pix, 150); }
+    for (let i = 0; i < N; i++) if (rm[i] && !isHi(i)) { n++; if (AS[i] > med + 5) { k++; pix.push(i); } }
+    raw.redness = k / Math.max(1, n);
+    const an = (() => { const m = or("nose"); let t = 0, c = 0; for (let i = 0; i < N; i++) if (m[i] && !isHi(i)) { t += AS[i]; c++; } return c ? t / c : NaN; })();
+    const ac = (() => { let t = 0, c = 0; for (let i = 0; i < N; i++) if (cheeks[i] && !isHi(i)) { t += AS[i]; c++; } return c ? t / c : NaN; })();
+    raw.noseRed = an - ac;
+    S.redness = Math.min(sc(raw.redness, 0.04, 0.35), isFinite(raw.noseRed) ? sc(raw.noseRed, 1, 9) : 97);
+    layers.redness = paint("redness", pix, 150); }
   // 3 acne: small raised red blobs
   let acneN = 0;
   { const cand = new Uint8Array(N); for (let i = 0; i < N; i++) if (broad[i] && RN[i] - RNb[i] > 0.04 && (B8[i] - B2[i]) / Lref < 0.07) cand[i] = 1;
@@ -770,31 +819,77 @@ async function localAnalyze(blob, a, lm, allowFallback) {
     const bl = blobs(cand, W, H, 1, 12); raw.pores = bl.length / Math.max(1, count(pm)) * 1000; raw.poreN = bl.length; raw.poreArea = count(pm);
     S.pores = sc(raw.pores, 2, 16); layers.pores = paint("pores", bl.flatMap(o => o.px), 230); }
   // 5 texture: medium-scale unevenness on cheeks
-  { let t = 0, n = 0; const pix = []; for (let i = 0; i < N; i++) if (cheeks[i]) { const v = Math.abs(B1[i] - B4[i]) / Lref; t += v; n++; if (v > 0.03) pix.push(i); }
+  { let t = 0, n = 0; const pix = []; for (let i = 0; i < N; i++) if (cheeks[i] && !isHi(i)) { const v = Math.abs(B1[i] - B4[i]) / Lref; t += v; n++; if (v > 0.03) pix.push(i); }
     raw.texture = t / Math.max(1, n); S.texture = sc(raw.texture, 0.01, 0.032); layers.texture = paint("texture", pix, 150); }
   // 6 radiance: evenness of tone across forehead and cheeks
   { const rm = or("forehead", "cheekR", "cheekL"); let s2 = 0, n = 0; const pix = [];
     for (let i = 0; i < N; i++) if (rm[i]) { const v = (B8[i] - B24[i]) / Lref; s2 += v * v; n++; if (v < -0.035) pix.push(i); }
     const cv = Math.sqrt(s2 / Math.max(1, n)); raw.radiance = cv; S.radiance = sc(cv, 0.018, 0.07); layers.radiance = paint("radiance", pix, 120); }
   // 7 oiliness: specular shine in the T-zone
-  { const pix = []; let n = 0; for (let i = 0; i < N; i++) if (tz[i]) { n++; if (L[i] > Lref * 1.22 && SAT[i] < 0.2) pix.push(i); }
-    raw.oiliness = pix.length / Math.max(1, n); S.oiliness = sc(raw.oiliness, 0.005, 0.09); layers.oiliness = paint("oiliness", pix, 220); }
+  { const pix = []; let n = 0; for (let i = 0; i < N; i++) if (tz[i]) { n++; if (isHi(i) && L[i] > B24[i] * 1.05) pix.push(i); }
+    raw.oiliness = pix.length / Math.max(1, n); S.oiliness = sc(raw.oiliness, 0.01, 0.12); layers.oiliness = paint("oiliness", pix, 220); }
   // 8 wrinkles: line-shaped valleys (horizontal on forehead and eye corners, vertical between brows)
-  { const hz = or("forehead", "crowR", "crowL"), vt = or("glabella"), pix = []; let n = 0, k = 0;
+  { const fhVisible = count(or("forehead")) / Math.max(1, fhArea);
+    if (fhVisible < 0.35) cond.push({ msg: "앞머리나 그림자로 이마가 대부분 가려져 주름은 미간과 눈꼬리만 측정했어요.", affects: ["wrinkles"] });
+    const hz = fhVisible < 0.35 ? or("crowR", "crowL") : or("forehead", "crowR", "crowL"), vt = or("glabella"), pix = []; let n = 0, k = 0;
     for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
       const i = y * W + x; if (!hz[i] && !vt[i]) continue; n++;
       const lyy = (B1[i - 2 * W] + B1[i + 2 * W] - 2 * B1[i]) / Lref, lxx = (B1[i - 2] + B1[i + 2] - 2 * B1[i]) / Lref;
       if ((hz[i] && lyy > 0.022 && lyy > 1.8 * Math.abs(lxx)) || (vt[i] && lxx > 0.022 && lxx > 1.8 * Math.abs(lyy))) { k++; pix.push(i); }
     }
     raw.wrinkles = k / Math.max(1, n); S.wrinkles = sc(raw.wrinkles, 0.01, 0.08); layers.wrinkles = paint("wrinkles", pix, 230); }
-  // 9 dark circles, 10 eye bags, 11 tear trough: shading of under-eye bands vs cheeks
-  { const lu = mean(L, or("underR", "underL")), lb = mean(L, or("bagR", "bagL")), ls = mean(L, or("shadowR", "shadowL")), lt = mean(L, or("troughR", "troughL"));
-    raw.darkCircles = (Lref - lu) / Lref; S.darkCircles = sc(raw.darkCircles, 0.04, 0.2);
-    raw.eyeBags = (lb - ls) / Lref + Math.max(0, (Lref - ls) / Lref - 0.08); S.eyeBags = sc(raw.eyeBags, 0.0, 0.14);
-    raw.tearTrough = (Lref - lt) / Lref; S.tearTrough = sc(raw.tearTrough, 0.05, 0.24);
-    layers.darkCircles = outline(layer(), [polys.underR, polys.underL], "darkCircles", .3);
-    layers.eyeBags = outline(outline(layer(), [polys.bagR, polys.bagL], "eyeBags", .3), [polys.shadowR, polys.shadowL], "tearTrough", .2);
-    layers.tearTrough = outline(layer(), [polys.troughR, polys.troughL], "tearTrough", .35); }
+  // 9 dark circles: CIELAB lightness of the under-eye band vs the cheeks
+  const Lc = labL(cheeks);
+  raw.dcDL = Lc - labL(eyeM("underR", "underL")); S.darkCircles = sc(raw.dcDL, 1.5, 7);
+  layers.darkCircles = outline(layer(), [polys.underR, polys.underL], "darkCircles", .3);
+  // 10 eye bags: lightness profile straight down from the lower lid — a bright bulge followed by a shadow groove
+  // 11 tear trough: the best-matching dark line running down and out from the inner eye corner, vs the skin either side
+  raw.bagDepth = null; raw.troughDL = null;
+  if (lm) {
+    const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
+    const bagRes = [], troughRes = [];
+    for (const [low, inner, outer] of [[[7, 163, 144, 145, 153, 154], 133, 33], [[249, 390, 373, 374, 380, 381], 362, 263]]) {
+      const I = P(inner), O = P(outer), ew = Math.hypot(O[0] - I[0], O[1] - I[1]), lat = norm([O[0] - I[0], O[1] - I[1]]);
+      for (const k of low) {
+        const p0 = P(k), prof = [];
+        for (let t = 0; t <= ew; t++) { let sm = 0, c = 0; for (let o = -2; o <= 2; o++) { const v = LSat(p0[0] + faceN[0] * t + lat[0] * o, p0[1] + faceN[1] * t + lat[1] * o); if (!isNaN(v)) { sm += v; c++; } } prof.push(c ? sm / c : NaN); }
+        const smv = prof.map((_, i) => { let sm = 0, c = 0; for (let j = i - 3; j <= i + 3; j++) if (j >= 0 && j < prof.length && !isNaN(prof[j])) { sm += prof[j]; c++; } return c ? sm / c : NaN; });
+        const i0b = Math.round(.08 * ew), i1b = Math.round(.45 * ew), i2b = Math.round(.9 * ew);
+        let pk = -1, pv = -Infinity; for (let i = i0b; i <= i1b; i++) if (smv[i] > pv) { pv = smv[i]; pk = i; }
+        if (pk < 0) continue;
+        let vk = -1, vv = Infinity; for (let i = pk + Math.max(2, Math.round(.05 * ew)); i <= i2b; i++) if (smv[i] < vv) { vv = smv[i]; vk = i; }
+        if (vk < 0) continue;
+        let after = -Infinity; for (let i = vk; i < smv.length; i++) if (smv[i] > after) after = smv[i];
+        bagRes.push({ depth: Math.max(0, Math.min(pv, after) - vv), peak: [p0[0] + faceN[0] * pk, p0[1] + faceN[1] * pk], valley: [p0[0] + faceN[0] * vk, p0[1] + faceN[1] * vk] });
+      }
+      let best = { c: -Infinity };
+      for (const ang of [15, 30, 45]) {
+        const a = ang * Math.PI / 180, gd = norm([faceN[0] * Math.cos(a) + lat[0] * Math.sin(a), faceN[1] * Math.cos(a) + lat[1] * Math.sin(a)]), pp = [-gd[1], gd[0]];
+        for (let off = -0.15; off <= 0.251; off += 0.05) {
+          const S0 = [I[0] + faceN[0] * .25 * ew + lat[0] * off * ew, I[1] + faceN[1] * .25 * ew + lat[1] * off * ew], hw = Math.max(1.5, .05 * ew), len = .6 * ew;
+          let gs = 0, gc = 0, fs = 0, fc = 0;
+          for (let t = 0; t <= len; t++) for (let o = -hw * 4; o <= hw * 4; o++) {
+            const v = LSat(S0[0] + gd[0] * t + pp[0] * o, S0[1] + gd[1] * t + pp[1] * o); if (isNaN(v)) continue;
+            if (Math.abs(o) <= hw) { gs += v; gc++; } else if (Math.abs(o) >= hw * 2.5) { fs += v; fc++; }
+          }
+          if (gc > 10 && fc > 10 && fs / fc - gs / gc > best.c) best = { c: fs / fc - gs / gc, S0, gd, len, hw };
+        }
+      }
+      if (best.S0) troughRes.push(best);
+    }
+    raw.bagCols = bagRes.map(b => +b.depth.toFixed(2));
+    if (bagRes.length >= 4) { const ds = bagRes.map(b => b.depth).sort((p, q) => p - q); raw.bagDepth = ds[Math.floor(ds.length * 0.75)]; /* bags sit under the outer and middle eye, so use the upper quartile */ S.eyeBags = sc(raw.bagDepth, 0.8, 6); }
+    if (troughRes.length) { raw.troughDL = troughRes.reduce((t, b) => t + b.c, 0) / troughRes.length; S.tearTrough = sc(raw.troughDL, 0.8, 4.5); }
+    { const cv = layer(), gx = cv.getContext("2d"); gx.lineWidth = Math.max(1.5, W / 220);
+      gx.fillStyle = LAYER_COLOR.eyeBags; for (const b of bagRes) { gx.beginPath(); gx.arc(b.peak[0], b.peak[1], 2.2, 0, 7); gx.fill(); }
+      gx.fillStyle = LAYER_COLOR.tearTrough; for (const b of bagRes) { gx.beginPath(); gx.arc(b.valley[0], b.valley[1], 2.6, 0, 7); gx.fill(); }
+      layers.eyeBags = cv; }
+    { const cv = layer(), gx = cv.getContext("2d"); gx.strokeStyle = LAYER_COLOR.tearTrough; gx.lineCap = "round";
+      for (const b of troughRes) { gx.lineWidth = b.hw * 2; gx.globalAlpha = .7; gx.beginPath(); gx.moveTo(...b.S0); gx.lineTo(b.S0[0] + b.gd[0] * b.len, b.S0[1] + b.gd[1] * b.len); gx.stroke(); }
+      layers.tearTrough = cv; }
+  }
+  if (raw.bagDepth == null) S.eyeBags = null;
+  if (raw.troughDL == null) S.tearTrough = null;
   // 12 upper eyelid, 13 lower eyelid: geometry from landmarks
   const eyeLayer = (key, which) => { const cv = layer(), gx = cv.getContext("2d"); gx.lineWidth = Math.max(1.5, W / 220); gx.strokeStyle = LAYER_COLOR[key]; gx.fillStyle = LAYER_COLOR[key];
     for (const e of [eyes.R, eyes.L]) {
@@ -826,10 +921,33 @@ async function localAnalyze(blob, a, lm, allowFallback) {
       gx.beginPath(); gx.moveTo(...mouth.cR); gx.lineTo(...mouth.mid); gx.lineTo(...mouth.cL); gx.stroke(); }
     layers.firmness = cv; }
   // 15 moisture: a photo cannot measure water content, so combine texture, cheek gloss and the questionnaire
-  { let gl = 0, n = 0; for (let i = 0; i < N; i++) if (cheeks[i]) { n++; if (L[i] > Lref * 1.12 && SAT[i] < 0.25) gl++; }
+  { let gl = 0, n = 0; for (let i = 0; i < N; i++) if (cheeks[i]) { n++; if (isHi(i)) gl++; }
     const gloss = gl / Math.max(1, n); raw.moisture = gloss;
     S.moisture = Math.round(0.55 * S.texture + 0.45 * sc(gloss, 0.03, 0.0));
     layers.moisture = outline(layer(), [polys.cheekR, polys.cheekL], "moisture", .2); }
+
+  // ----- photo conditions -----
+  let pose = null;
+  if (lm) {
+    pose = headPose(lm, IW, IH);
+    if (Math.abs(pose.pitch) > 8) cond.push({ msg: pose.pitch > 0
+        ? `카메라가 눈보다 낮은 곳에서 찍혔어요(위아래 ${pose.pitch.toFixed(0)}°). 눈을 내려다보게 돼 윗눈꺼풀이 실제보다 덮여 보이고, 턱과 팔자 부위가 실제보다 도드라져 보여요.`
+        : `카메라가 눈보다 높은 곳에서 찍혔어요(위아래 ${pose.pitch.toFixed(0)}°). 눈 밑과 팔자 부위가 실제보다 덜 보일 수 있어요.`, affects: ["upperEyelid", "lowerEyelid", "firmness", "eyeBags"] });
+    if (Math.abs(pose.yaw) > 10) cond.push({ msg: `얼굴이 옆으로 ${Math.abs(pose.yaw).toFixed(0)}° 돌아가 있어 왼쪽과 오른쪽 값이 다르게 나올 수 있어요.`, affects: ["darkCircles", "tearTrough", "firmness"] });
+    const fh = or("forehead"), fl = count(fh) > 200 ? labL(fh) : labL(or("glabella")), cl = labL(or("chin"));
+    if (fl - cl > 8) cond.push({ msg: "빛이 위에서 내려와 눈 밑과 팔자 부위에 그림자가 생겼어요. 다크서클과 팔자 그늘이 실제보다 짙게 나올 수 있어요.", affects: ["darkCircles", "firmness"] });
+  }
+  { // detail check: pores and fine texture are only visible in a sharp, unretouched photo
+    let t = 0, k = 0; for (let i = 0; i < N; i++) if (cheeks[i] && !isHi(i)) { t += Math.abs(L[i] - B1[i]) / Lref; k++; }
+    raw.detail = t / Math.max(1, k);
+    const lowRes = lm && faceWpx < 380;
+    if (lowRes || raw.detail < 0.003) {
+      cond.push({ msg: lowRes ? `사진 속 얼굴이 작아(폭 ${Math.round(faceWpx)}px) 모공과 피부결을 잴 만큼 선명하지 않아요. 얼굴을 화면 가득 찍어 주세요.`
+        : "사진이 매끈하게 처리돼 있어요(카메라 자동 보정이나 압축). 모공과 잔결이 지워져 이 두 항목은 잴 수 없어요. 보정 기능을 끄고 찍어 주세요.", affects: ["pores", "texture"], hide: true });
+      S.pores = null; S.texture = null;
+      S.moisture = Math.round(0.45 * sc(raw.moisture, 0.03, 0.0) + 0.55 * 75);
+    }
+  }
 
   // ----- questionnaire adjustments (self-report) -----
   const has = x => (a.concern || []).includes(x), adj = (k, v) => { if (S[k] != null) S[k] += v; };
@@ -843,7 +961,7 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   const lv = v => v >= 75 ? 0 : v >= 55 ? 1 : 2;
   const metrics = CONCERNS.flatMap(([gk, , items]) => items.map(([key, label]) => ({
     key, label, group: gk, score: S[key],
-    note: S[key] == null ? "얼굴 인식이 되지 않아 측정하지 못했어요. 카메라로 다시 찍으면 측정할 수 있어요." : NOTE15[key][lv(S[key])]
+    note: S[key] == null ? ((cond.find(c => c.hide && c.affects.includes(key)) || {}).msg || "얼굴 인식이 되지 않아 측정하지 못했어요. 카메라로 다시 찍으면 측정할 수 있어요.") : NOTE15[key][lv(S[key])]
       + (key === "moisture" ? " (사진만으로는 수분을 잴 수 없어 설문을 함께 반영했어요)" : "")
   })));
   const scored = metrics.filter(m => m.score != null);
@@ -900,15 +1018,15 @@ async function localAnalyze(blob, a, lm, allowFallback) {
     aStar: labCN[1],
     spotPct: raw.spots * 100,
     acneCount: acneN,
-    poreDensity: raw.poreN / Math.max(1e-6, raw.poreArea * mmPerPx * mmPerPx / 100),
-    roughness: raw.texture * 100,
+    poreDensity: S.pores == null ? null : raw.poreN / Math.max(1e-6, raw.poreArea * mmPerPx * mmPerPx / 100),
+    roughness: S.texture == null ? null : raw.texture * 100,
     toneUneven: raw.radiance * 100,
     oilPct: raw.oiliness * 100,
     wrinklePct: raw.wrinkles * 100,
     nasoDL: labC[0] - Lof("nasoR", "nasoL"),
-    dcDL: labC[0] - Lof("underR", "underL"),
-    bagDL: Lof("bagR", "bagL") - Lof("shadowR", "shadowL"),
-    troughDL: labC[0] - Lof("troughR", "troughL"),
+    dcDL: raw.dcDL,
+    bagDL: raw.bagDepth,
+    troughDL: raw.troughDL,
     mrd1: irisOK ? raw.upperEyelid * 5.85 : null,
     mrd2: irisOK ? raw.lowerEyelid * 5.85 : null
   };
@@ -919,7 +1037,7 @@ async function localAnalyze(blob, a, lm, allowFallback) {
     valid: true, mode: "local", faceFound: !!lm, skinType, overall, skinAge,
     summary: `${skinType} 경향의 피부로 보여요. 15개 항목 중 ${low2.join(", ")} 점수가 가장 낮았어요.`,
     metrics, zones, routine, ingredients: { recommend: rec, avoid }, seeDoctor,
-    viz: { base: c, layers }, measures, light, scaleBy: irisOK ? "iris" : "face"
+    viz: { base: c, layers }, _raw: Object.assign(raw, { wbDbg }), measures, light, scaleBy: irisOK ? "iris" : "face", cond, pose, wb
   };
 }
 
@@ -1330,6 +1448,11 @@ function renderReport(r, a, isSample) {
       h("p", {class:"note", text: r.noise?.personal ? "변화 판단 기준: 내 측정 오차 테스트 결과(MDC95)." : "변화 판단 기준: 기본 오차값. 처음 화면의 ‘측정 오차 테스트’를 하면 내 환경에 맞게 더 정확해져요."})));
   }
 
+  if (r.cond?.length) out.append(h("div", {class:"card stack condbox"},
+    h("h2", {text:"촬영 조건"}),
+    h("p", {class:"note", text:"이 사진에서 결과에 영향을 주는 조건이에요. 영향받는 항목에는 ⚠ 표시가 붙어요."}),
+    h("ul", {}, ...r.cond.map(c => h("li", {}, c.msg, c.affects.length ? h("span", {class:"note", text: ` (${c.affects.map(k => LABEL[k]).join(", ")})`}) : "")))));
+
   if (r.seeDoctor) out.append(h("div", {class:"doctor"}, h("b", {text:"피부과 상담 권장 "}), r.seeDoctor));
 
   const groupsOf = CONCERNS.map(([gk, gl, items]) => [gl, metrics.filter(m => m.group === gk || (!m.group && items.some(it => it[1] === m.label || it[0] === m.key)))]).filter(g => g[1].length);
@@ -1345,7 +1468,7 @@ function renderReport(r, a, isSample) {
   }
   const row = m => { const ok = m.score != null, s = clamp(m.score), canShow = !!(r.viz && r.viz.layers[m.key]);
     const el = h(canShow ? "button" : "div", {class:"metric", "data-key": m.key || "", ...(canShow ? {type:"button", "aria-pressed":"false"} : {})},
-      h("span", {class:"lab", text: m.label}),
+      h("span", {class:"lab", text: (ok && r.cond?.some(c => !c.hide && c.affects.includes(m.key)) ? "⚠ " : "") + m.label}),
       h("span", {class:"bar", role:"img", "aria-label": ok ? `${m.label} ${s}점, ${word(s)}` : `${m.label} 측정 불가`}, h("i", {style: ok ? `width:${s}%;background:${tone(s)}` : "width:0"})),
       h("span", {class:"val", text: ok ? s : "–"}),
       h("span", {class:"mnote", text: m.note || ""}),
