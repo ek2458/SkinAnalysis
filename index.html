@@ -243,8 +243,6 @@ ol.routine li::before{content:counter(s, decimal-leading-zero);font-family:var(-
       <label class="btn ghost" for="photo" style="flex:1">사진 파일 선택</label>
     </div>
     <input type="file" id="photo" accept="image/jpeg,image/png,image/webp" hidden>
-    <input type="file" id="nativeCam" accept="image/*" capture="user" hidden>
-    <label class="btn ghost full" for="nativeCam" id="nativeCamBtn" hidden>휴대폰 기본 카메라로 찍기</label>
     <p class="note" id="camNote">사진은 이 브라우저 안에서만 분석되고 어디에도 올라가지 않아요.</p>
     <details id="keyBox">
       <summary class="note" style="cursor:pointer">AI 정밀 분석 (선택, 개발자용)</summary>
@@ -610,7 +608,7 @@ const setPhoto = async f => {
   photo = f; photoLm = null; photoSrc = "file"; photoPose = null; if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = URL.createObjectURL(f);
   $("preview").src = previewUrl; $("preview").hidden = false; $("guide").hidden = false; $("dropText").hidden = true;
-  $("analyzeBtn").disabled = false; $("nativeCamBtn").hidden = true; camLabel();
+  $("analyzeBtn").disabled = false; camLabel();
 };
 $("photo").onchange = e => setPhoto(e.target.files[0]);
 document.addEventListener("paste", e => {
@@ -1329,19 +1327,15 @@ function resetPhoto() {
   photo = null; photoLm = null; photoPose = null; photoSrc = "file";
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   $("preview").hidden = true; $("preview").removeAttribute("src"); $("guide").hidden = true; $("dropText").hidden = false;
-  $("analyzeBtn").disabled = true; $("photoErr").hidden = true; $("nativeCamBtn").hidden = true; camLabel();
+  $("analyzeBtn").disabled = true; $("photoErr").hidden = true; camLabel();
 }
 const inApp = /KAKAOTALK|Instagram|FBAN|FBAV|Line\/|NAVER\(inapp|DaumApps|everytimeApp|; wv\)/i.test(navigator.userAgent);
 const touch = matchMedia("(pointer: coarse)").matches;
-function camFail(msg) {
-  $("photoErr").textContent = msg; $("photoErr").hidden = false;
-  if (touch) $("nativeCamBtn").hidden = false;   // the phone's own camera app always works as a fallback
-}
-$("nativeCam").onchange = e => { const f = e.target.files[0]; if (f) setPhoto(f); e.target.value = ""; };
+function camFail(msg) { $("photoErr").textContent = msg; $("photoErr").hidden = false; }
 $("camBtn").onclick = async () => {
   $("photoErr").hidden = true;
   if (stream) { cancelCount(); capturePhoto(); return; }
-  if (inApp) return camFail("카카오톡·인스타그램 같은 앱 안의 브라우저에서는 카메라 화면을 열 수 없어요. 오른쪽 위 메뉴에서 ‘Safari로 열기’ 또는 ‘다른 브라우저로 열기’를 눌러 주세요. 아래 버튼으로 휴대폰 기본 카메라를 써도 돼요.");
+  if (inApp) return camFail("카카오톡·인스타그램 같은 앱 안의 브라우저에서는 카메라 화면을 열 수 없어요. 오른쪽 위 메뉴에서 ‘Safari로 열기’ 또는 ‘다른 브라우저로 열기’를 눌러 주세요.");
   if (!navigator.mediaDevices?.getUserMedia) return camFail(window.isSecureContext === false
     ? "카메라는 https 주소에서만 켤 수 있어요. https://로 시작하는 주소로 열어 주세요."
     : "이 브라우저에서는 카메라 화면을 열 수 없어요. Safari나 Chrome 최신 버전으로 열어 주세요.");
@@ -1352,7 +1346,7 @@ $("camBtn").onclick = async () => {
     // iPhone Safari will not start a hidden video, so show it before playing
     v.hidden = false; $("preview").hidden = true; $("dropText").hidden = true; $("guide").hidden = false;
     await Promise.race([v.play(), new Promise(res => setTimeout(res, 3000))]);
-    camLabel(); goodSince = 0; $("nativeCamBtn").hidden = true;
+    camLabel(); goodSince = 0;
     raf = requestAnimationFrame(camLoop);
   } catch (e) {
     try { stream?.getTracks().forEach(t => t.stop()); } catch {}
