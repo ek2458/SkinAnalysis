@@ -63,6 +63,27 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .drop .guide{transition:border-color .2s, box-shadow .2s}
 .drop .guide.ok{border-color:#7fe3d6;box-shadow:0 0 0 999px rgba(0,0,0,.18),0 0 28px #7fe3d6}
 .camchip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(10,20,19,.72);color:#fff;padding:6px 14px;border-radius:999px;font-size:13px;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+#histMeasure{font:inherit;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.trend{width:100%;height:auto;display:block}
+.trend .tgrid{stroke:var(--line);stroke-width:1}
+.trend .tline{fill:none;stroke:var(--accent);stroke-width:2}
+.trend .tdot{fill:var(--accent)} .trend .tlast{stroke:var(--surface);stroke-width:2}
+.trend .tlabel{fill:var(--muted);font-size:10px;font-family:var(--f-mono)}
+.hrow{display:grid;grid-template-columns:36px 1fr auto auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:6px 0;font-size:13.5px;font-variant-numeric:tabular-nums}
+.hrow img,.hthumb{width:36px;height:48px;object-fit:cover;border-radius:6px;background:var(--line);display:block}
+.hrow .hval{font-family:var(--f-mono)}
+.testbanner{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:14px}
+.mline{grid-column:2 / 4;font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-top:-4px}
+.st-better{color:var(--good)} .st-worse{color:var(--bad)} .st-same{color:var(--muted)} .st-up,.st-down{color:var(--fg)}
+.cmp{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.cmp div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:6px;font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto}
+.mtable{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+.mtable th,.mtable td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;white-space:nowrap}
+.mtable th{color:var(--muted);font-weight:500}
+details.method summary{cursor:pointer;font-weight:600}
+details.method dl{display:grid;gap:10px;margin:12px 0 0}
+details.method dt{font-weight:600;font-size:14px} details.method dd{margin:0;font-size:13.5px;color:var(--muted)}
 #hud{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .camtip{position:absolute;left:10px;right:10px;top:12%;background:rgba(10,20,19,.82);color:#fff;padding:8px 12px;border-radius:10px;font-size:12.5px;line-height:1.45;text-align:center}
 .count{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--f-mono);font-size:84px;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.5);pointer-events:none}
@@ -131,18 +152,29 @@ ol.routine li::before{content:counter(s);font-family:var(--f-mono);font-size:12p
     <div class="card stack">
       <span class="eyebrow">셀피 피부 분석 · 15개 항목</span>
       <h1>셀피 한 장으로 지금 피부 상태를 읽어 드려요</h1>
-      <p class="lead">간단한 질문과 정면 셀피로 잡티, 모공, 주름, 다크서클, 눈꺼풀 처짐 등 15개 항목을 측정해 점수와 피부 맵으로 보여 주고, 아침·저녁 루틴과 추천 성분을 정리해 드립니다.</p>
+      <p class="lead">정면 셀피로 잡티, 모공, 주름, 다크서클, 눈꺼풀 처짐 등 15개 항목을 단위가 있는 측정값으로 재고 피부 맵으로 보여 드려요. 같은 조건에서 찍은 기록을 이 기기에 쌓아, 지난번보다 의미 있게 변했는지 알려 드립니다.</p>
       <div class="how">
         <div><b>질문 3개</b>나이대, 피부 느낌, 고민</div>
         <div><b>셀피 촬영</b>밝은 곳, 맨얼굴 정면</div>
         <div><b>리포트</b>점수, 부위별 소견, 루틴</div>
       </div>
       <button class="full" id="startBtn">진단 시작하기</button>
-      <p class="note">사진은 분석에만 쓰이고 이 페이지에 저장되지 않아요. 결과는 화장품 상담용 참고 정보이며 의학적 진단이 아닙니다.</p>
+      <p class="note">사진은 이 기기 안에서만 분석돼요. 측정 기록과 작은 미리보기는 이 기기에만 저장되고, 언제든 지울 수 있어요. 결과는 화장품 상담용 참고 정보이며 의학적 진단이 아닙니다.</p>
     </div>
     <div class="card stack" id="histCard" hidden>
-      <h3>지난 진단 기록 <span class="note">(이 브라우저에만 저장)</span></h3>
-      <div class="hist" id="histList"></div>
+      <div class="row" style="justify-content:space-between;align-items:baseline"><h2>내 피부 기록</h2><span class="note">이 기기에만 저장돼요</span></div>
+      <p class="note" id="histEmpty">아직 기록이 없어요. 카메라로 진단하면 측정값이 기록되고, 다음 진단 때 지난번과 비교해 드려요.</p>
+      <div class="stack" id="histBody" hidden>
+        <label class="note" for="histMeasure">추세를 볼 항목</label>
+        <select id="histMeasure"></select>
+        <div id="histChart"></div>
+        <div class="hist" id="histList"></div>
+      </div>
+      <p class="note" id="noiseInfo"></p>
+      <div class="row">
+        <button class="ghost" id="testBtn" style="flex:1">측정 오차 테스트 (5회 촬영)</button>
+        <button class="ghost" id="histClear" style="flex:1">기록 모두 지우기</button>
+      </div>
     </div>
     <div class="card stack">
       <div class="row" style="justify-content:space-between;align-items:center"><h3>결과 리포트 미리보기</h3><span class="badge">예시</span></div>
@@ -168,6 +200,7 @@ ol.routine li::before{content:counter(s);font-family:var(--f-mono);font-size:12p
   <section id="s-photo" class="card stack" hidden>
     <span class="eyebrow">2 / 3단계 · 셀피</span>
     <h2>정면 셀피를 올려 주세요</h2>
+    <p class="testbanner" id="testBanner" hidden></p>
     <div class="drop" id="drop">
       <span id="dropText">카메라 켜기를 누르면 브라우저가 카메라 사용 허용을 물어봐요<br><span class="note">사진을 끌어다 놓거나 ⌘V로 붙여넣어도 돼요</span></span>
       <video id="cam" playsinline muted hidden></video>
@@ -227,7 +260,7 @@ const h = (tag, attrs = {}, ...kids) => {
   return el;
 };
 const SCREENS = ["s-intro","s-quiz","s-photo","s-load","s-result"];
-const show = id => { if (id !== "s-photo") { try { stopCam(); } catch {} } SCREENS.forEach(s => $(s).hidden = s !== id); window.scrollTo(0,0); };
+const show = id => { if (id !== "s-photo") { try { stopCam(); } catch {} } if (id === "s-intro" || id === "s-quiz") { try { if (testMode) { testMode = null; $("testBanner").hidden = true; } } catch {} } SCREENS.forEach(s => $(s).hidden = s !== id); window.scrollTo(0,0); };
 
 const Q = {
   age: ["10대","20대 초반","20대 후반","30대","40대","50대 이상"],
@@ -242,14 +275,225 @@ document.querySelectorAll(".opts").forEach(box => {
   ));
 });
 
-// history (per-viewer convenience)
-const HKEY = "gyeol-history";
-const loadHist = () => { try { return JSON.parse(localStorage.getItem(HKEY) || "[]"); } catch { return []; } };
-const saveHist = r => { try { const a = loadHist(); a.unshift({d: new Date().toISOString().slice(0,10), o: r.overall, t: r.skinType}); localStorage.setItem(HKEY, JSON.stringify(a.slice(0,8))); } catch {} };
-const renderHist = () => {
-  const a = loadHist(); $("histCard").hidden = !a.length; $("histList").replaceChildren(
-    ...a.map(x => h("div", {}, h("span", {text: `${x.d} · ${x.t || ""}`}), h("span", {text: `${x.o}점`}))));
+// ===== Stage 1: defined measurements, lighting check, on-device records, repeatability test =====
+// sRGB (0-255) -> CIELAB (D65)
+function rgb2lab(r, g, b) {
+  const f = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  const R = f(r), G = f(g), B = f(b);
+  let X = (0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047, Y = 0.2126 * R + 0.7152 * G + 0.0722 * B, Z = (0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883;
+  const h = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+  X = h(X); Y = h(Y); Z = h(Z);
+  return [116 * Y - 16, 500 * (X - Y), 200 * (Y - Z)];
+}
+// measurement catalogue: dir +1 = higher is worse, -1 = higher is better, 0 = neither
+const MEAS = [
+  { key: "ita", label: "피부톤 ITA°", unit: "°", dir: 0, dec: 1, sd: 1.5, concern: null,
+    how: "볼 피부의 CIELAB 색값으로 계산한 개인 유형 각도(ITA° = arctan((L*−50)/b*)). 피부과 색채 연구에서 피부 밝기를 나타내는 표준 지표예요. 값이 클수록 밝은 톤이에요." },
+  { key: "aStar", label: "붉은기 a*", unit: "", dir: 1, dec: 1, sd: 0.7, concern: "redness",
+    how: "볼과 코 피부의 CIELAB a* 평균값. 붉은 정도(홍반)를 나타내는 색 지표로 연구에서 널리 써요." },
+  { key: "spotPct", label: "잡티 면적", unit: "%", dir: 1, dec: 2, sd: 0.25, concern: "spots",
+    how: "이마·볼·코·턱 피부 중 주변보다 뚜렷하게 어둡고 붉지 않은 반점이 차지하는 면적 비율." },
+  { key: "acneCount", label: "붉은 트러블", unit: "개", dir: 1, dec: 0, sd: 1, concern: "acne",
+    how: "주변보다 뚜렷하게 붉고 크기가 일정 이상인 점의 개수." },
+  { key: "poreDensity", label: "모공 밀도", unit: "개/cm²", dir: 1, dec: 1, sd: 2.5, concern: "pores",
+    how: "코와 볼에서 찾은 작은 어두운 점의 개수를 피부 면적(cm²)으로 나눈 값. 크기는 홍채 지름(평균 약 11.7mm)을 자로 삼아 환산해요." },
+  { key: "roughness", label: "피부결 거칠기", unit: "", dir: 1, dec: 2, sd: 0.12, concern: "texture",
+    how: "볼 피부 밝기의 중간 크기 요철 정도(밝기 대비 %)." },
+  { key: "toneUneven", label: "톤 불균일", unit: "%", dir: 1, dec: 2, sd: 0.25, concern: "radiance",
+    how: "이마와 볼에서 전체 조명 기울기를 뺀 뒤 남는 밝기 얼룩의 표준편차(밝기 대비 %)." },
+  { key: "oilPct", label: "번들거림 면적", unit: "%", dir: 1, dec: 1, sd: 0.8, concern: "oiliness",
+    how: "T존(이마·미간·코) 피부 중 빛이 반사돼 하얗게 번들거리는 면적 비율." },
+  { key: "wrinklePct", label: "주름선 비율", unit: "%", dir: 1, dec: 2, sd: 0.4, concern: "wrinkles",
+    how: "이마·미간·눈꼬리 피부 중 가는 선 모양의 그늘로 판정된 픽셀 비율." },
+  { key: "nasoDL", label: "팔자 그늘 ΔL*", unit: "", dir: 1, dec: 1, sd: 1.0, concern: "firmness",
+    how: "볼과 팔자 부위의 CIELAB 밝기(L*) 차이. 클수록 팔자 주름 그늘이 짙어요." },
+  { key: "dcDL", label: "눈 밑 어두움 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.8, concern: "darkCircles",
+    how: "볼과 눈 밑 띠의 L* 차이. 눈가 색소 침착 연구에서 쓰는 방식이에요." },
+  { key: "bagDL", label: "눈밑 볼록 대비 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.8, concern: "eyeBags",
+    how: "눈 바로 아래(볼록한 부분)와 그 아래 그림자 띠의 L* 차이." },
+  { key: "troughDL", label: "눈물고랑 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.9, concern: "tearTrough",
+    how: "볼과 눈 앞머리 아래 부위의 L* 차이." },
+  { key: "mrd1", label: "MRD1", unit: "mm", dir: -1, dec: 1, sd: 0.3, concern: "upperEyelid",
+    how: "눈동자 중심에서 윗눈꺼풀 가장자리까지의 거리(margin reflex distance 1). 눈꺼풀 처짐 평가에 쓰는 임상 지표로, 보통 4~5mm예요." },
+  { key: "mrd2", label: "MRD2", unit: "mm", dir: 1, dec: 1, sd: 0.3, concern: "lowerEyelid",
+    how: "눈동자 중심에서 아래 눈꺼풀 가장자리까지의 거리(MRD2). 보통 5mm 안팎이고, 크면 아래 흰자가 많이 보여요." }
+];
+const MEAS_BY = Object.fromEntries(MEAS.map(m => [m.key, m]));
+const MEAS_OF_CONCERN = Object.fromEntries(MEAS.filter(m => m.concern).map(m => [m.concern, m]));
+const MDC_K = 2.77; // minimal detectable change at 95% = 1.96 x sqrt(2) x SD
+const itaClass = v => v > 55 ? "매우 밝은 톤" : v > 41 ? "밝은 톤" : v > 28 ? "중간 톤" : v > 10 ? "약간 그을린 톤" : v > -30 ? "갈색 톤" : "어두운 톤";
+const fmt = (k, v) => v == null || !isFinite(v) ? "–" : (MEAS_BY[k].dec ? v.toFixed(MEAS_BY[k].dec) : String(Math.round(v)));
+
+// ---- on-device storage (IndexedDB, with in-memory fallback) ----
+const DB = (() => {
+  let dbp = null, mem = { records: [], meta: {} };
+  const open = () => dbp ||= new Promise((res) => {
+    try {
+      const rq = indexedDB.open("gyeol-skin", 1);
+      rq.onupgradeneeded = () => { const d = rq.result; d.createObjectStore("records", { keyPath: "id" }); d.createObjectStore("meta"); };
+      rq.onsuccess = () => res(rq.result); rq.onerror = () => res(null);
+    } catch { res(null); }
+  });
+  const tx = async (store, mode, fn) => { const d = await open(); if (!d) return null;
+    return new Promise((res) => { try { const t = d.transaction(store, mode), s = t.objectStore(store), r = fn(s); t.oncomplete = () => res({ value: r?.result }); t.onerror = () => res(null); } catch { res(null); } }); };
+  return {
+    async all() { const r = await tx("records", "readonly", s => s.getAll()); return ((r && r.value) || mem.records).slice().sort((a, b) => a.id - b.id); },
+    async add(rec) { const ok = await tx("records", "readwrite", s => s.put(rec)); if (!ok) mem.records.push(rec); },
+    async clear() { await tx("records", "readwrite", s => s.clear()); mem.records = []; },
+    async getMeta(k) { const r = await tx("meta", "readonly", s => s.get(k)); return (r ? r.value : mem.meta[k]) ?? null; },
+    async setMeta(k, v) { const ok = await tx("meta", "readwrite", s => s.put(v, k)); if (!ok) mem.meta[k] = v; }
+  };
+})();
+async function noiseSD() { const n = await DB.getMeta("noise"); return { personal: !!n, n: n?.n || 0, date: n?.date, sd: Object.fromEntries(MEAS.map(m => [m.key, n?.sd?.[m.key] ?? m.sd])) }; }
+function compareRecords(cur, prev, noise) {
+  const rows = [];
+  for (const m of MEAS) {
+    const a = cur.measures?.[m.key], b = prev?.measures?.[m.key];
+    if (a == null || b == null || !isFinite(a) || !isFinite(b)) continue;
+    const d = a - b, mdc = MDC_K * noise.sd[m.key];
+    let state = "same";
+    if (Math.abs(d) >= mdc) state = m.dir === 0 ? (d > 0 ? "up" : "down") : (d * m.dir > 0 ? "worse" : "better");
+    rows.push({ key: m.key, d, mdc, state });
+  }
+  let lightWarn = "";
+  if (prev?.light && cur.light) {
+    const dl = Math.abs(cur.light.L - prev.light.L) / prev.light.L, dr = Math.abs(cur.light.rg - prev.light.rg), db = Math.abs(cur.light.bg - prev.light.bg);
+    if (dl > 0.2 || dr > 0.06 || db > 0.06) lightWarn = "조명이나 카메라가 지난번과 달라 보여요. 색과 밝기 관련 변화는 정확도가 낮을 수 있어요. 같은 장소, 같은 시간대에 찍으면 비교가 정확해져요.";
+  }
+  return { rows, lightWarn };
+}
+const STATE_TXT = { same: "변화 없음 (측정 오차 범위)", better: "좋아짐", worse: "나빠짐", up: "높아짐", down: "낮아짐" };
+async function saveRecord(r, pose) {
+  if (r.mode !== "local" || !r.measures) return null;
+  let thumb = null;
+  try { const b = r.viz.base, t = document.createElement("canvas"), k = 120 / b.width; t.width = 120; t.height = Math.round(b.height * k);
+    t.getContext("2d").drawImage(b, 0, 0, t.width, t.height); thumb = t.toDataURL("image/jpeg", 0.7); } catch {}
+  const rec = { id: Date.now(), date: new Date().toISOString(), overall: r.overall, skinType: r.skinType,
+    scores: Object.fromEntries(r.metrics.map(m => [m.key, m.score])), measures: r.measures, light: r.light, pose: pose || null, thumb };
+  await DB.add(rec); return rec;
+}
+
+// ---- lighting check from the live video ----
+const lightCv = document.createElement("canvas"); lightCv.width = 96; lightCv.height = 72;
+let lightS = null, lightTick = 0;
+function lightingOf(v, pts) {
+  if (++lightTick % 4 && lightS) return lightS;
+  const g = lightCv.getContext("2d", { willReadFrequently: true }), W = 96, H = 72;
+  g.drawImage(v, 0, 0, W, H); const d = g.getImageData(0, 0, W, H).data;
+  let a = 1, b = 0, c = 1, e = 0; for (const p of pts) { a = Math.min(a, p.x); b = Math.max(b, p.x); c = Math.min(c, p.y); e = Math.max(e, p.y); }
+  const fx0 = (a + (b - a) * .2) * W, fx1 = (b - (b - a) * .2) * W, fy0 = (c + (e - c) * .25) * H, fy1 = (e - (e - c) * .15) * H, mid = (fx0 + fx1) / 2;
+  const bx0 = (a - (b - a) * .25) * W, bx1 = (b + (b - a) * .25) * W, by0 = (c - (e - c) * .2) * H;
+  let sl = 0, nl = 0, sr = 0, nr = 0, sb = 0, nb = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4, L = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    if (x >= fx0 && x <= fx1 && y >= fy0 && y <= fy1) { if (x < mid) { sl += L; nl++; } else { sr += L; nr++; } }
+    else if ((x < bx0 || x > bx1) && y < by0 + (e - c) * H * .6) { sb += L; nb++; }
+  }
+  const cur = { face: (sl + sr) / Math.max(1, nl + nr), lr: nl && nr ? Math.abs(sl / nl - sr / nr) / Math.max(1, (sl / nl + sr / nr) / 2) : 0, bg: nb ? sb / nb : 0 };
+  lightS = lightS ? { face: lightS.face * .6 + cur.face * .4, lr: lightS.lr * .6 + cur.lr * .4, bg: lightS.bg * .6 + cur.bg * .4 } : cur;
+  return lightS;
+}
+function lightingMsg(l) {
+  if (l.face < 70) return "얼굴이 어두워요. 조금 더 밝은 곳으로 가 주세요";
+  if (l.face > 228) return "빛이 너무 강해요. 직사광선을 피해 주세요";
+  if (l.lr > 0.22) return "얼굴 한쪽만 밝아요. 빛이 얼굴 정면에서 오도록 서 주세요";
+  if (l.bg > l.face * 1.35 && l.bg > 170) return "뒤가 너무 밝아요(역광). 창문을 등지지 말고 마주 봐 주세요";
+  return "";
+}
+
+// ---- my records (intro card) ----
+let histKey = "overall";
+async function renderHist() {
+  const recs = await DB.all(), noise = await noiseSD();
+  $("histCard").hidden = false;
+  $("histEmpty").hidden = recs.length > 0; $("histBody").hidden = recs.length === 0;
+  $("noiseInfo").textContent = noise.personal
+    ? `측정 오차 테스트 완료 (${new Date(noise.date).toLocaleDateString("ko-KR")}, ${noise.n}회 촬영). 변화 판단에 내 측정 오차를 써요.`
+    : "아직 측정 오차 테스트를 하지 않았어요. 지금은 기본 오차 기준으로 변화를 판단해요.";
+  if (!recs.length) return;
+  const sel = $("histMeasure");
+  if (!sel.options.length) {
+    sel.append(h("option", {value: "overall", text: "종합 점수"}), ...MEAS.map(m => h("option", {value: m.key, text: m.label + (m.unit ? ` (${m.unit})` : "")})));
+    sel.onchange = () => { histKey = sel.value; renderHist(); };
+  }
+  sel.value = histKey;
+  const val = r => histKey === "overall" ? r.overall : r.measures?.[histKey];
+  const pts = recs.map(r => ({ t: r.id, v: val(r) })).filter(p => p.v != null && isFinite(p.v));
+  $("histChart").replaceChildren(trendSvg(pts, histKey));
+  $("histList").replaceChildren(...recs.slice().reverse().slice(0, 12).map(r => h("div", {class: "hrow"},
+    r.thumb ? h("img", {src: r.thumb, alt: "", width: 36, height: 48}) : h("span", {class: "hthumb"}),
+    h("span", {text: new Date(r.id).toLocaleString("ko-KR", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"})}),
+    h("span", {text: `${r.skinType} · ${r.overall}점`}),
+    h("span", {class: "hval", text: histKey === "overall" ? "" : `${fmt(histKey, r.measures?.[histKey])}${MEAS_BY[histKey].unit}`}))));
+}
+function trendSvg(pts, key) {
+  const NS = "http://www.w3.org/2000/svg", W = 320, H = 120, pl = 34, pr = 10, pt = 10, pb = 22;
+  const svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("class", "trend");
+  const mk = (t, a, txt) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; svg.append(e); return e; };
+  if (pts.length < 2) { mk("text", {x: W / 2, y: H / 2, "text-anchor": "middle", class: "tlabel"}, pts.length ? "기록이 2개 이상 쌓이면 추세가 보여요" : "이 항목은 기록이 없어요"); return svg; }
+  let lo = Math.min(...pts.map(p => p.v)), hi = Math.max(...pts.map(p => p.v)); if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
+  const padv = (hi - lo) * .15; lo -= padv; hi += padv;
+  const X = i => pl + (W - pl - pr) * (pts.length === 1 ? .5 : i / (pts.length - 1)), Y = v => pt + (H - pt - pb) * (1 - (v - lo) / (hi - lo));
+  const dec = key === "overall" ? 0 : MEAS_BY[key].dec;
+  for (const v of [lo + padv, hi - padv]) { mk("line", {x1: pl, x2: W - pr, y1: Y(v), y2: Y(v), class: "tgrid"}); mk("text", {x: pl - 4, y: Y(v) + 3, "text-anchor": "end", class: "tlabel"}, v.toFixed(dec)); }
+  mk("polyline", {points: pts.map((p, i) => `${X(i)},${Y(p.v)}`).join(" "), class: "tline"});
+  pts.forEach((p, i) => mk("circle", {cx: X(i), cy: Y(p.v), r: i === pts.length - 1 ? 4 : 2.5, class: i === pts.length - 1 ? "tdot tlast" : "tdot"}));
+  const d = t => new Date(t).toLocaleDateString("ko-KR", {month: "numeric", day: "numeric"});
+  mk("text", {x: pl, y: H - 6, class: "tlabel"}, d(pts[0].t)); mk("text", {x: W - pr, y: H - 6, "text-anchor": "end", class: "tlabel"}, d(pts[pts.length - 1].t));
+  return svg;
+}
+let clearArmed = false;
+$("histClear").onclick = async () => {
+  if (!clearArmed) { clearArmed = true; $("histClear").textContent = "한 번 더 누르면 모든 기록이 지워져요"; setTimeout(() => { clearArmed = false; $("histClear").textContent = "기록 모두 지우기"; }, 4000); return; }
+  clearArmed = false; await DB.clear(); $("histClear").textContent = "기록 모두 지우기"; renderHist();
 };
+
+// ---- repeatability test: 5 captures in the same place and light ----
+let testMode = null;
+$("testBtn").onclick = () => {
+  testMode = { need: 5, shots: [], waitReset: false, busy: false };
+  $("testBanner").hidden = false; $("testBanner").textContent = "측정 오차 테스트 · 0/5. 같은 장소, 같은 조명에서 안내에 맞추면 자동으로 찍혀요. 한 장 찍힐 때마다 고개를 살짝 돌렸다가 다시 맞춰 주세요.";
+  show("s-photo"); if (!stream) $("camBtn").click();
+};
+async function testCapture(blob, lm) {
+  testMode.busy = true; chip("측정 중…");
+  let r = null; try { r = await localAnalyze(blob, answers || {}, lm, true); } catch {}
+  if (!testMode) return;
+  testMode.busy = false;
+  if (r && r.valid !== false && r.measures) testMode.shots.push(r.measures);
+  const n = testMode.shots.length;
+  $("testBanner").textContent = `측정 오차 테스트 · ${n}/${testMode.need}. ` + (r && r.valid !== false ? "고개를 살짝 돌렸다가 다시 맞춰 주세요." : "이번 사진은 측정하지 못했어요. 다시 맞춰 주세요.");
+  testMode.waitReset = true;
+  if (n >= testMode.need) { stopCam(); finishTest(); }
+}
+async function finishTest() {
+  const shots = testMode.shots; testMode = null; $("testBanner").hidden = true;
+  const res = MEAS.map(m => {
+    const v = shots.map(s => s[m.key]).filter(x => x != null && isFinite(x));
+    if (v.length < 3) return { m, n: v.length };
+    const mean = v.reduce((a, b) => a + b, 0) / v.length, sd = Math.sqrt(v.reduce((a, b) => a + (b - mean) ** 2, 0) / (v.length - 1));
+    return { m, n: v.length, mean, sd: Math.max(sd, m.sd * 0.25) };
+  });
+  const sdMap = Object.fromEntries(res.filter(x => x.sd != null).map(x => [x.m.key, x.sd]));
+  await DB.setMeta("noise", { sd: sdMap, n: shots.length, date: Date.now() });
+  const out = $("s-result"); out.replaceChildren();
+  out.append(h("div", {class: "card stack"},
+    h("span", {class: "eyebrow", text: "측정 오차 테스트 결과"}),
+    h("h2", {text: "이 환경에서 측정값이 얼마나 흔들리는지 확인했어요"}),
+    h("p", {class: "lead", text: "같은 사람을 같은 조건에서 5번 찍었을 때의 차이예요. 앞으로 지난 기록과 비교할 때 ‘의미 있는 변화’ 기준보다 작은 차이는 측정 오차로 보고 ‘변화 없음’으로 표시해요."}),
+    h("div", {class: "tablewrap"}, h("table", {class: "mtable"},
+      h("thead", {}, h("tr", {}, ...["측정값", "평균", "흔들림(표준편차)", "의미 있는 변화 기준"].map(t => h("th", {text: t})))),
+      h("tbody", {}, ...res.map(x => h("tr", {},
+        h("td", {text: x.m.label + (x.m.unit ? ` (${x.m.unit})` : "")}),
+        h("td", {text: x.mean != null ? fmt(x.m.key, x.mean) : "–"}),
+        h("td", {text: x.sd != null ? "±" + x.sd.toFixed(Math.max(1, x.m.dec)) : "측정 부족"}),
+        h("td", {text: x.sd != null ? "±" + (MDC_K * x.sd).toFixed(Math.max(1, x.m.dec)) : "기본값 사용"})))))),
+    h("p", {class: "note", text: "‘의미 있는 변화 기준’은 측정 신뢰도 연구에서 쓰는 최소 감지 변화량(MDC95 = 1.96 × √2 × 표준편차)이에요. 조명이나 장소를 바꾸면 테스트를 다시 해 주세요."}),
+    (() => { const b = h("button", {class: "full", text: "처음으로"}); b.onclick = () => { show("s-intro"); renderHist(); }; return b; })()
+  ));
+  show("s-result");
+}
+
 renderHist();
 
 document.querySelectorAll("[data-back]").forEach(b => b.onclick = () => show(b.dataset.back));
@@ -265,7 +509,7 @@ $("quizNext").onclick = () => {
 };
 
 // photo
-let photo = null, previewUrl = null, photoSrc = "file";
+let photo = null, previewUrl = null, photoSrc = "file", photoPose = null;
 const toJpeg = async f => {
   const img = await createImageBitmap(f);
   const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
@@ -278,7 +522,7 @@ const setPhoto = async f => {
     try { f = await toJpeg(f); } catch { f = null; }
   }
   if (!f || !/^image\/(jpeg|png|webp)$/.test(f.type)) { $("photoErr").textContent = "이 사진 형식은 열 수 없어요. JPG, PNG, WebP 사진으로 올려 주세요."; $("photoErr").hidden = false; return; }
-  photo = f; photoLm = null; photoSrc = "file"; if (previewUrl) URL.revokeObjectURL(previewUrl);
+  photo = f; photoLm = null; photoSrc = "file"; photoPose = null; if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = URL.createObjectURL(f);
   $("preview").src = previewUrl; $("preview").hidden = false; $("guide").hidden = false; $("dropText").hidden = true;
   $("analyzeBtn").disabled = false;
@@ -404,7 +648,8 @@ async function localAnalyze(blob, a, lm, allowFallback) {
     const FH = [[70,54],[63,103],[105,67],[66,109],[107,10],[336,10],[296,338],[334,297],[293,332],[300,284]];
     polys.forehead = hull([...FH.map(([b]) => P(b)), ...FH.map(([b, t]) => lerp(b, t, 0.6))]);
     // eye geometry (iris needs the 478-point model)
-    const ax = P(33), bx = P(263), ex = [bx[0] - ax[0], bx[1] - ax[1]], el = Math.hypot(...ex), u = [ex[0] / el, ex[1] / el], n = [-u[1], u[0]];
+    const ax = P(33), bx = P(263), ex = [bx[0] - ax[0], bx[1] - ax[1]], el = Math.hypot(...ex), u = [ex[0] / el, ex[1] / el];
+    let n = [-u[1], u[0]]; if (n[1] < 0) n = [-n[0], -n[1]]; // always point down the face, also for mirrored camera photos
     const dot = (p, q) => p[0] * q[0] + p[1] * q[1], sub = (p, q) => [p[0] - q[0], p[1] - q[1]];
     const eye = (inner, outer, up, low) => ({ inner: P(inner), outer: P(outer), up: P(up), low: P(low) });
     const E = { R: eye(133, 33, 159, 145), L: eye(362, 263, 386, 374) };
@@ -522,7 +767,7 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   // 4 pores: tiny dark dots on nose and cheeks
   { const pm = or("nose", "cheekR", "cheekL"), cand = new Uint8Array(N);
     for (let i = 0; i < N; i++) if (pm[i] && (B4[i] - B1[i]) / Lref > 0.03) cand[i] = 1;
-    const bl = blobs(cand, W, H, 1, 12); raw.pores = bl.length / Math.max(1, count(pm)) * 1000;
+    const bl = blobs(cand, W, H, 1, 12); raw.pores = bl.length / Math.max(1, count(pm)) * 1000; raw.poreN = bl.length; raw.poreArea = count(pm);
     S.pores = sc(raw.pores, 2, 16); layers.pores = paint("pores", bl.flatMap(o => o.px), 230); }
   // 5 texture: medium-scale unevenness on cheeks
   { let t = 0, n = 0; const pix = []; for (let i = 0; i < N; i++) if (cheeks[i]) { const v = Math.abs(B1[i] - B4[i]) / Lref; t += v; n++; if (v > 0.03) pix.push(i); }
@@ -644,11 +889,37 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   let seeDoctor = null;
   if (acneN >= 10) seeDoctor = "붉은 트러블이 여러 개 보여요. 오래가거나 아프다면 피부과 상담을 권해요.";
   else if (eyes?.R.mrd1 != null && raw.upperEyelid < 0.3) seeDoctor = "윗눈꺼풀이 눈동자를 많이 덮고 있어요. 시야가 답답하게 느껴진다면 안과 상담을 받아 보세요.";
+  // ----- defined measurements (units, CIELAB) -----
+  const labMean = m => { let sL = 0, sa = 0, sb = 0, n = 0; for (let i = 0; i < N; i++) if (m[i]) { const q = rgb2lab(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]); sL += q[0]; sa += q[1]; sb += q[2]; n++; } return n ? [sL / n, sa / n, sb / n] : [NaN, NaN, NaN]; };
+  const labC = labMean(cheeks), labCN = labMean(or("cheekR", "cheekL", "nose"));
+  const Lof = (...ks) => labMean(or(...ks))[0];
+  const irisOK = !!(eyes && eyes.R.r && eyes.L.r && eyes.R.mrd1 != null);
+  const mmPerPx = irisOK ? 11.7 / (eyes.R.r + eyes.L.r) : lm ? 140 / Math.hypot(P(454)[0] - P(234)[0], P(454)[1] - P(234)[1]) : 140 / FACEW;
+  const measures = {
+    ita: Math.atan((labC[0] - 50) / labC[2]) * 180 / Math.PI,
+    aStar: labCN[1],
+    spotPct: raw.spots * 100,
+    acneCount: acneN,
+    poreDensity: raw.poreN / Math.max(1e-6, raw.poreArea * mmPerPx * mmPerPx / 100),
+    roughness: raw.texture * 100,
+    toneUneven: raw.radiance * 100,
+    oilPct: raw.oiliness * 100,
+    wrinklePct: raw.wrinkles * 100,
+    nasoDL: labC[0] - Lof("nasoR", "nasoL"),
+    dcDL: labC[0] - Lof("underR", "underL"),
+    bagDL: Lof("bagR", "bagL") - Lof("shadowR", "shadowL"),
+    troughDL: labC[0] - Lof("troughR", "troughL"),
+    mrd1: irisOK ? raw.upperEyelid * 5.85 : null,
+    mrd2: irisOK ? raw.lowerEyelid * 5.85 : null
+  };
+  for (const k in measures) if (measures[k] != null && !isFinite(measures[k])) measures[k] = null;
+  let sr = 0, sg = 0, sbb = 0, nn = 0; for (let i = 0; i < N; i++) if (cheeks[i]) { sr += d[i * 4]; sg += d[i * 4 + 1]; sbb += d[i * 4 + 2]; nn++; }
+  const light = { L: Lref, rg: sr / Math.max(1, sg), bg: sbb / Math.max(1, sg) };
   return {
     valid: true, mode: "local", faceFound: !!lm, skinType, overall, skinAge,
     summary: `${skinType} 경향의 피부로 보여요. 15개 항목 중 ${low2.join(", ")} 점수가 가장 낮았어요.`,
     metrics, zones, routine, ingredients: { recommend: rec, avoid }, seeDoctor,
-    viz: { base: c, layers }
+    viz: { base: c, layers }, measures, light, scaleBy: irisOK ? "iris" : "face"
   };
 }
 
@@ -765,19 +1036,20 @@ function faceStatus(pts, v) {
   const eyeY = (eR.y + eL.y) / 2;
   // in the mirrored preview, a positive camera-image yaw shows the nose moving to the screen's left
   const P = st.parts = {
-    size: fw >= 0.52 && fw <= 0.76, centre: Math.abs(fx - GUIDE.cx) <= .07,
+    size: fw >= 0.52 && fw <= 0.76, centre: Math.abs(fx - GUIDE.cx) <= .07, light: !(st.lightMsg = lightingMsg(st.light = lightingOf(v, pts))),
     roll: Math.abs(ps.roll) <= POSE.roll, yaw: Math.abs(ps.yaw) <= POSE.yaw, pitch: Math.abs(ps.pitch) <= POSE.pitch,
     eyes: Math.abs(eyeY - GUIDE.eyeY) <= .04
   };
   if (!P.size) st.msg = fw < 0.52 ? "조금 더 가까이 와 주세요" : "조금 뒤로 물러나 주세요";
   else if (!P.centre) st.msg = fx < GUIDE.cx ? "→ 오른쪽으로 조금 옮겨 주세요" : "← 왼쪽으로 조금 옮겨 주세요";
+  else if (!P.light) st.msg = st.lightMsg;
   else if (!P.roll) st.msg = "고개가 기울어졌어요. 똑바로 세워 주세요";
   else if (!P.yaw) st.msg = ps.yaw > 0 ? "→ 고개를 오른쪽으로 조금 돌려 주세요" : "← 고개를 왼쪽으로 조금 돌려 주세요";
   else if (!P.pitch) st.msg = ps.pitch > 0 ? "↓ 턱을 조금 내려 주세요" : "↑ 턱을 조금 들어 주세요";
   else if (!P.eyes) st.msg = eyeY > GUIDE.eyeY ? "↑ 눈을 점선에 맞춰 주세요 (카메라를 조금 낮추거나 몸을 올려 주세요)" : "↓ 눈을 점선에 맞춰 주세요 (카메라를 조금 올리거나 몸을 낮춰 주세요)";
   st.ok = !st.msg;
   // camera height: the same up/down correction is asked for several seconds in a row
-  const dir = P.size && P.centre && P.roll && P.yaw && !P.pitch ? Math.sign(ps.pitch) : 0;
+  const dir = P.size && P.centre && P.light && P.roll && P.yaw && !P.pitch ? Math.sign(ps.pitch) : 0;
   if (dir && dir === pitchBadDir) { if (performance.now() - pitchBadSince > 3500)
       st.tip = dir > 0 ? "카메라가 눈보다 낮으면 올려다보는 사진이 돼요. 노트북을 책 위에 올리거나 휴대폰을 눈높이로 들어 주세요."
                        : "카메라가 눈보다 높으면 내려다보는 사진이 돼요. 휴대폰을 눈높이까지 내려 주세요."; }
@@ -813,7 +1085,7 @@ function drawHud(st) {
     // angle readout
     g.font = `${Math.round(u * 3.1)}px ui-monospace, Menlo, monospace`; g.textAlign = "center"; g.fillStyle = "rgba(255,255,255,.9)";
     const f = v => (v >= 0 ? "+" : "") + v.toFixed(0) + "°";
-    g.fillText(`좌우 ${f(-st.pose.yaw)}  위아래 ${f(st.pose.pitch)}  기울기 ${f(st.pose.roll)}`, W / 2, H * .06);
+    g.fillText(`좌우 ${f(-st.pose.yaw)}  위아래 ${f(st.pose.pitch)}  기울기 ${f(st.pose.roll)}  조명 ${st.parts.light ? "✓" : "!"}`, W / 2, H * .06);
   }
 }
 function camLoop() {
@@ -830,7 +1102,9 @@ function camLoop() {
     drawHud(pts ? st : null); $("hud").hidden = false;
     $("camTip").textContent = st.tip; $("camTip").hidden = !st.tip;
     $("guide").classList.toggle("ok", ok);
-    if (ok) {
+    if (testMode?.waitReset && !ok) testMode.waitReset = false;
+    if (ok && testMode && (testMode.waitReset || testMode.busy)) { goodSince = 0; chip(testMode.busy ? "측정 중…" : "고개를 살짝 돌렸다가 다시 맞춰 주세요"); }
+    else if (ok) {
       if (!goodSince) goodSince = performance.now();
       if (!countTimer && performance.now() - goodSince > 700) {
         let n = 3; $("count").textContent = n; $("count").hidden = false; chip("좋아요, 그대로 있어 주세요");
@@ -844,8 +1118,9 @@ function capturePhoto() {
   const v = $("cam"); if (!stream || !v.videoWidth) return;
   const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
   const g = c.getContext("2d"); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(v, 0, 0);
-  const lm = lastLm ? lastLm.map(p => ({ x: 1 - p.x, y: p.y })) : null;
-  c.toBlob(b => { stopCam(); setPhoto(b).then(() => { photoLm = lm; photoSrc = "camera"; }); }, "image/jpeg", 0.92);
+  const lm = lastLm ? lastLm.map(p => ({ x: 1 - p.x, y: p.y, z: p.z })) : null, pose = poseS ? { yaw: -poseS.yaw, pitch: poseS.pitch, roll: -poseS.roll } : null;
+  if (testMode) { c.toBlob(b => testCapture(b, lm), "image/jpeg", 0.92); return; }
+  c.toBlob(b => { stopCam(); setPhoto(b).then(() => { photoLm = lm; photoSrc = "camera"; photoPose = pose; }); }, "image/jpeg", 0.92);
 }
 $("camBtn").onclick = async () => {
   $("photoErr").hidden = true;
@@ -944,7 +1219,11 @@ $("analyzeBtn").onclick = async () => {
     if (!r || r.valid === false) {
       show("s-photo"); $("photoErr").textContent = (r && r.reason) || "얼굴을 잘 찾지 못했어요. 밝은 곳에서 정면으로 다시 찍어 주세요."; $("photoErr").hidden = false; return;
     }
-    saveHist(r); renderHist();
+    try {
+      const before = await DB.all(), prev = before[before.length - 1], rec = await saveRecord(r, photoPose);
+      if (rec && prev) { r.compare = compareRecords(rec, prev, await noiseSD()); r.prevDate = prev.id; r.noise = await noiseSD(); }
+      renderHist();
+    } catch {}
     renderReport(r, answers, false);
   } catch (e) {
     stopAnim(); show("s-photo");
@@ -1032,10 +1311,24 @@ function renderReport(r, a, isSample) {
       h("dl", {class:"facts"},
         h("div", {}, h("dt", {text:"피부 타입"}), h("dd", {text: r.skinType || "-"})),
         h("div", {}, h("dt", {text:"추정 피부 나이"}), h("dd", {text: r.skinAge ? `${r.skinAge}세` : "-"})),
-        h("div", {style:"grid-column:1/3"}, h("dt", {text:"우선 관리"}), h("dd", {style:"font-size:17px", text: focus || "-"})))),
+        r.measures?.ita != null ? h("div", {}, h("dt", {text:"피부톤 ITA°"}), h("dd", {style:"font-size:17px", text: `${fmt("ita", r.measures.ita)}° · ${itaClass(r.measures.ita)}`})) : null,
+        h("div", {style: r.measures?.ita != null ? "" : "grid-column:1/3"}, h("dt", {text:"우선 관리"}), h("dd", {style:"font-size:17px", text: focus || "-"})))),
     h("p", {text: r.summary || ""}),
     r.mode === "local" ? h("p", {class:"note", text:"간이 분석은 얼굴 인식으로 부위를 나눈 뒤 사진의 밝기·색·결을 측정하고 설문을 더해 점수를 계산해요. 피부과 기기처럼 검증된 수치가 아니며, 조명과 카메라에 따라 달라질 수 있어요."}) : null
   ));
+
+  if (r.compare) {
+    const c = r.compare, changed = c.rows.filter(x => x.state !== "same"), same = c.rows.length - changed.length;
+    const nb = changed.filter(x => x.state === "better").length, nw = changed.filter(x => x.state === "worse").length;
+    out.append(h("div", {class:"card stack"},
+      h("h2", {text:"지난 기록과 비교"}),
+      h("p", {class:"note", text:`${new Date(r.prevDate).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"})} 기록 대비 · 좋아짐 ${nb} · 나빠짐 ${nw} · 변화 없음 ${same}`}),
+      c.lightWarn ? h("p", {class:"doctor", text: c.lightWarn}) : null,
+      changed.length ? h("div", {class:"cmp"}, ...changed.map(x => { const m = MEAS_BY[x.key];
+        return h("div", {}, h("span", {text: m.label}), h("span", {class:"st-" + x.state, text: `${x.d > 0 ? "+" : ""}${x.d.toFixed(Math.max(1, m.dec))}${m.unit} · ${STATE_TXT[x.state]}`})); }))
+        : h("p", {text:"모든 측정값이 측정 오차 범위 안이에요. 지난번과 같은 상태로 볼 수 있어요."}),
+      h("p", {class:"note", text: r.noise?.personal ? "변화 판단 기준: 내 측정 오차 테스트 결과(MDC95)." : "변화 판단 기준: 기본 오차값. 처음 화면의 ‘측정 오차 테스트’를 하면 내 환경에 맞게 더 정확해져요."})));
+  }
 
   if (r.seeDoctor) out.append(h("div", {class:"doctor"}, h("b", {text:"피부과 상담 권장 "}), r.seeDoctor));
 
@@ -1055,7 +1348,10 @@ function renderReport(r, a, isSample) {
       h("span", {class:"lab", text: m.label}),
       h("span", {class:"bar", role:"img", "aria-label": ok ? `${m.label} ${s}점, ${word(s)}` : `${m.label} 측정 불가`}, h("i", {style: ok ? `width:${s}%;background:${tone(s)}` : "width:0"})),
       h("span", {class:"val", text: ok ? s : "–"}),
-      h("span", {class:"mnote", text: m.note || ""}));
+      h("span", {class:"mnote", text: m.note || ""}),
+      (() => { const mm = MEAS_OF_CONCERN[m.key], v = r.measures?.[mm?.key]; if (!mm || v == null) return null;
+        const cr = r.compare?.rows.find(x => x.key === mm.key);
+        return h("span", {class:"mline"}, `${mm.label} ${fmt(mm.key, v)}${mm.unit}`, cr ? h("span", {class:"st-" + cr.state, text: ` · 지난번 대비 ${cr.d > 0 ? "+" : ""}${cr.d.toFixed(Math.max(1, mm.dec))} · ${cr.state === "same" ? "변화 없음" : STATE_TXT[cr.state]}`}) : ""); })());
     if (canShow) el.onclick = () => { drawMap(m.key); mapCv.scrollIntoView({block:"nearest", behavior:"smooth"}); };
     return el; };
   out.append(h("div", {class:"card stack"}, h("h2", {text: `${metrics.length}가지 항목`}),
@@ -1065,6 +1361,13 @@ function renderReport(r, a, isSample) {
   ));
   if (r.viz) { const firstKey = [...metrics].filter(m => m.score != null && r.viz.layers[m.key]).sort((p, q) => p.score - q.score)[0]?.key; if (firstKey) drawMap(firstKey); }
   if (r.mode === "local" && !r.faceFound) out.append(h("p", {class:"note", text:"얼굴 인식 모델을 불러오지 못해 눈꺼풀 항목은 측정하지 못했어요. 인터넷 연결을 확인하고 다시 찍어 주세요."}));
+
+  if (r.measures) out.append(h("details", {class:"card method"},
+    h("summary", {text:"측정 방법 보기"}),
+    h("p", {class:"note", style:"margin-top:10px", text:"점수(0~100)는 아래 측정값을 보기 쉽게 바꾼 참고용이에요. 기록 비교와 추세는 단위가 있는 측정값으로 판단해요. 피부과 측정 기기로 검증된 값은 아니며, 같은 장소·조명·자세에서 찍을수록 비교가 정확해져요."}),
+    h("dl", {}, ...MEAS.flatMap(m => [h("dt", {text: m.label + (m.unit ? ` (${m.unit})` : "")}), h("dd", {text: m.how})]),
+      h("dt", {text:"크기 기준"}), h("dd", {text: r.scaleBy === "iris" ? "홍채 지름(평균 약 11.7mm)을 자로 삼아 픽셀을 mm로 바꿨어요. 홍채 크기는 사람마다 조금씩 달라 mm 값에는 약 ±0.5mm 정도의 개인차가 있어요." : "홍채를 찾지 못해 얼굴 폭(약 140mm)을 기준으로 환산했어요. mm 값의 오차가 커요."}),
+      h("dt", {text:"수분"}), h("dd", {text:"사진으로는 피부 수분을 잴 수 없어요. 수분 점수는 피부결과 설문을 바탕으로 한 추정이라 기록 비교에서 빼요."}))));
 
   if (Array.isArray(r.zones) && r.zones.length) out.append(h("div", {class:"card stack"}, h("h2", {text:"부위별 소견"}),
     h("div", {class:"zones"}, ...r.zones.map(z => h("div", {class:"zone"}, h("b", {text: z.zone}), z.finding || "")))));
