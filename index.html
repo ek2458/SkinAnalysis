@@ -82,8 +82,11 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .trend .tline{fill:none;stroke:var(--accent);stroke-width:2}
 .trend .tdot{fill:var(--accent)} .trend .tlast{stroke:var(--surface);stroke-width:2;fill:var(--blush)}
 .trend .tlabel{fill:var(--muted);font-size:10px;font-family:var(--f-mono)}
-.hrow{display:grid;grid-template-columns:36px 1fr auto auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:8px 0;font-size:13.5px;font-variant-numeric:tabular-nums}
+.hrow{display:grid;grid-template-columns:36px 1fr auto auto auto;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:8px 0;font-size:13.5px;font-variant-numeric:tabular-nums}
 .hrow img,.hthumb{width:36px;height:48px;object-fit:cover;border-radius:6px;background:var(--line);display:block}
+.hdel{background:transparent;border:1px solid transparent;color:var(--muted);border-radius:999px;padding:2px 10px;font-size:16px;line-height:1.4;min-width:34px}
+.hdel:hover{background:transparent;color:var(--fg);border-color:var(--line)}
+.hdel.armed{color:#fff;background:var(--wine-2);border-color:var(--accent);font-size:12.5px}
 .hrow .hval{font-variant-numeric:tabular-nums;color:var(--blush)}
 .condbox{border-color:rgba(217,154,91,.5)}
 .condbox ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:14px}
@@ -225,8 +228,8 @@ ol.routine li::before{content:counter(s, decimal-leading-zero);font-family:var(-
     <h2>정면 셀피를 올려 주세요</h2>
     <p class="testbanner" id="testBanner" hidden></p>
     <div class="drop" id="drop">
-      <span id="dropText">카메라 켜기를 누르면 브라우저가 카메라 사용 허용을 물어봐요<br><span class="note">사진을 끌어다 놓거나 ⌘V로 붙여넣어도 돼요</span></span>
-      <video id="cam" playsinline muted hidden></video>
+      <span id="dropText">사진 촬영하기를 누르면 브라우저가 카메라 사용 허용을 물어봐요<br><span class="note">사진을 끌어다 놓거나 ⌘V로 붙여넣어도 돼요</span></span>
+      <video id="cam" playsinline muted autoplay hidden></video>
       <img id="preview" alt="선택한 셀피 미리보기" hidden>
       <canvas id="mesh" hidden></canvas>
       <span class="guide" id="guide" hidden></span>
@@ -236,10 +239,12 @@ ol.routine li::before{content:counter(s, decimal-leading-zero);font-family:var(-
       <span class="camtip" id="camTip" hidden></span>
     </div>
     <div class="row">
-      <button type="button" id="camBtn" style="flex:1">카메라 켜기</button>
+      <button type="button" id="camBtn" style="flex:1">사진 촬영하기</button>
       <label class="btn ghost" for="photo" style="flex:1">사진 파일 선택</label>
     </div>
     <input type="file" id="photo" accept="image/jpeg,image/png,image/webp" hidden>
+    <input type="file" id="nativeCam" accept="image/*" capture="user" hidden>
+    <label class="btn ghost full" for="nativeCam" id="nativeCamBtn" hidden>휴대폰 기본 카메라로 찍기</label>
     <p class="note" id="camNote">사진은 이 브라우저 안에서만 분석되고 어디에도 올라가지 않아요.</p>
     <details id="keyBox">
       <summary class="note" style="cursor:pointer">AI 정밀 분석 (선택, 개발자용)</summary>
@@ -363,6 +368,7 @@ const DB = (() => {
     async all() { const r = await tx("records", "readonly", s => s.getAll()); return ((r && r.value) || mem.records).slice().sort((a, b) => a.id - b.id); },
     async add(rec) { const ok = await tx("records", "readwrite", s => s.put(rec)); if (!ok) mem.records.push(rec); },
     async clear() { await tx("records", "readwrite", s => s.clear()); mem.records = []; },
+    async del(id) { await tx("records", "readwrite", s => s.delete(id)); mem.records = mem.records.filter(r => r.id !== id); },
     async getMeta(k) { const r = await tx("meta", "readonly", s => s.get(k)); return (r ? r.value : mem.meta[k]) ?? null; },
     async setMeta(k, v) { const ok = await tx("meta", "readwrite", s => s.put(v, k)); if (!ok) mem.meta[k] = v; }
   };
@@ -447,7 +453,19 @@ async function renderHist() {
     r.thumb ? h("img", {src: r.thumb, alt: "", width: 36, height: 48}) : h("span", {class: "hthumb"}),
     h("span", {text: new Date(r.id).toLocaleString("ko-KR", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"})}),
     h("span", {text: `${r.skinType} · ${r.overall}점`}),
-    h("span", {class: "hval", text: histKey === "overall" ? "" : `${fmt(histKey, r.measures?.[histKey])}${MEAS_BY[histKey].unit}`}))));
+    h("span", {class: "hval", text: histKey === "overall" ? "" : `${fmt(histKey, r.measures?.[histKey])}${MEAS_BY[histKey].unit}`}),
+    delBtn(r))));
+}
+function delBtn(r) {
+  const label = `${new Date(r.id).toLocaleString("ko-KR", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"})} 기록 삭제`;
+  const b = h("button", {type: "button", class: "hdel", "aria-label": label, title: "이 기록 삭제", text: "×"});
+  let armed = null;
+  b.onclick = async () => {
+    if (!armed) { b.textContent = "삭제"; b.classList.add("armed"); b.setAttribute("aria-label", label + " 확인");
+      armed = setTimeout(() => { armed = null; b.textContent = "×"; b.classList.remove("armed"); b.setAttribute("aria-label", label); }, 3500); return; }
+    clearTimeout(armed); await DB.del(r.id); renderHist();
+  };
+  return b;
 }
 function trendSvg(pts, key) {
   const NS = "http://www.w3.org/2000/svg", W = 320, H = 120, pl = 34, pr = 10, pt = 10, pb = 22;
@@ -563,7 +581,7 @@ requestAnimationFrame(paintBlooms);
 document.fonts?.ready?.then(paintBlooms);
 
 document.querySelectorAll("[data-back]").forEach(b => b.onclick = () => show(b.dataset.back));
-$("startBtn").onclick = () => show("s-quiz");
+$("startBtn").onclick = () => { resetPhoto(); show("s-quiz"); };
 $("sampleBtn").onclick = () => renderReport(SAMPLE, {}, true);
 $("sampleBtn2").onclick = () => renderReport(SAMPLE, {}, true);
 
@@ -592,7 +610,7 @@ const setPhoto = async f => {
   photo = f; photoLm = null; photoSrc = "file"; photoPose = null; if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = URL.createObjectURL(f);
   $("preview").src = previewUrl; $("preview").hidden = false; $("guide").hidden = false; $("dropText").hidden = true;
-  $("analyzeBtn").disabled = false;
+  $("analyzeBtn").disabled = false; $("nativeCamBtn").hidden = true; camLabel();
 };
 $("photo").onchange = e => setPhoto(e.target.files[0]);
 document.addEventListener("paste", e => {
@@ -1163,7 +1181,7 @@ const stopCam = () => {
   cancelAnimationFrame(raf); cancelCount();
   stream?.getTracks().forEach(t => t.stop()); stream = null;
   $("cam").hidden = true; $("mesh").hidden = true; $("hud").hidden = true; $("camTip").hidden = true; poseS = null; chip(""); $("guide").classList.remove("ok");
-  $("camBtn").textContent = "카메라 켜기";
+  camLabel();
 };
 function drawFace(g, pts, W, H, t, alpha = 1) {
   if (!pts) return;
@@ -1306,18 +1324,39 @@ function capturePhoto() {
   if (testMode) { c.toBlob(b => testCapture(b, lm), "image/jpeg", 0.92); return; }
   c.toBlob(b => { stopCam(); setPhoto(b).then(() => { photoLm = lm; photoSrc = "camera"; photoPose = pose; }); }, "image/jpeg", 0.92);
 }
+function camLabel() { $("camBtn").textContent = stream ? "촬영하기" : photo ? "다시 촬영하기" : "사진 촬영하기"; }
+function resetPhoto() {
+  photo = null; photoLm = null; photoPose = null; photoSrc = "file";
+  if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+  $("preview").hidden = true; $("preview").removeAttribute("src"); $("guide").hidden = true; $("dropText").hidden = false;
+  $("analyzeBtn").disabled = true; $("photoErr").hidden = true; $("nativeCamBtn").hidden = true; camLabel();
+}
+const inApp = /KAKAOTALK|Instagram|FBAN|FBAV|Line\/|NAVER\(inapp|DaumApps|everytimeApp|; wv\)/i.test(navigator.userAgent);
+const touch = matchMedia("(pointer: coarse)").matches;
+function camFail(msg) {
+  $("photoErr").textContent = msg; $("photoErr").hidden = false;
+  if (touch) $("nativeCamBtn").hidden = false;   // the phone's own camera app always works as a fallback
+}
+$("nativeCam").onchange = e => { const f = e.target.files[0]; if (f) setPhoto(f); e.target.value = ""; };
 $("camBtn").onclick = async () => {
   $("photoErr").hidden = true;
   if (stream) { cancelCount(); capturePhoto(); return; }
-  if (!navigator.mediaDevices?.getUserMedia) { $("photoErr").textContent = "이 브라우저에서는 카메라를 쓸 수 없어요. Chrome이나 Safari 최신 버전으로 열어 주세요."; $("photoErr").hidden = false; return; }
+  if (inApp) return camFail("카카오톡·인스타그램 같은 앱 안의 브라우저에서는 카메라 화면을 열 수 없어요. 오른쪽 위 메뉴에서 ‘Safari로 열기’ 또는 ‘다른 브라우저로 열기’를 눌러 주세요. 아래 버튼으로 휴대폰 기본 카메라를 써도 돼요.");
+  if (!navigator.mediaDevices?.getUserMedia) return camFail(window.isSecureContext === false
+    ? "카메라는 https 주소에서만 켤 수 있어요. https://로 시작하는 주소로 열어 주세요."
+    : "이 브라우저에서는 카메라 화면을 열 수 없어요. Safari나 Chrome 최신 버전으로 열어 주세요.");
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
-    const v = $("cam"); v.srcObject = stream; await v.play();
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false }); }
+    catch (e1) { if (e1.name === "NotAllowedError" || e1.name === "SecurityError") throw e1; stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); }
+    const v = $("cam"); v.srcObject = stream; v.muted = true; v.setAttribute("playsinline", ""); v.setAttribute("muted", "");
+    // iPhone Safari will not start a hidden video, so show it before playing
     v.hidden = false; $("preview").hidden = true; $("dropText").hidden = true; $("guide").hidden = false;
-    $("camBtn").textContent = "촬영하기"; goodSince = 0;
+    await Promise.race([v.play(), new Promise(res => setTimeout(res, 3000))]);
+    camLabel(); goodSince = 0; $("nativeCamBtn").hidden = true;
     raf = requestAnimationFrame(camLoop);
   } catch (e) {
-    stream = null;
+    try { stream?.getTracks().forEach(t => t.stop()); } catch {}
+    stream = null; $("cam").hidden = true; if (!photo) { $("dropText").hidden = false; $("guide").hidden = true; } camLabel();
     const framed = (() => { try { return window.self !== window.top; } catch { return true; } })();
     const safari = /Apple/.test(navigator.vendor) && !/Chrome|CriOS/.test(navigator.userAgent);
     $("photoErr").textContent = framed
@@ -1326,8 +1365,10 @@ $("camBtn").onclick = async () => {
       ? "Safari는 내 컴퓨터에 저장된 파일에서 카메라를 막아요. 이 파일을 Chrome으로 열어 주세요. (파일 우클릭 > 다음으로 열기 > Google Chrome)"
       : e.name === "NotAllowedError"
       ? "카메라 권한이 거부됐어요. 주소창 왼쪽 아이콘이나 시스템 설정 > 개인정보 보호 및 보안 > 카메라에서 브라우저를 허용해 주세요."
-      : "카메라를 켜지 못했어요. 다른 앱이 카메라를 쓰고 있지 않은지 확인해 주세요.";
-    $("photoErr").hidden = false;
+      : e.name === "NotReadableError" || e.name === "AbortError"
+      ? "다른 앱이 카메라를 쓰고 있어요. 카메라를 쓰는 다른 앱이나 탭을 닫고 다시 눌러 주세요."
+      : "카메라를 켜지 못했어요.";
+    camFail($("photoErr").textContent + (touch && e.name === "NotAllowedError" ? " 휴대폰에서는 설정 > Safari(또는 Chrome) > 카메라를 ‘허용’으로 바꿔 주세요." : "") + ` (${e.name || "오류"})`);
   }
 };
 document.querySelectorAll("[data-back]").forEach(b => b.addEventListener("click", stopCam));
@@ -1409,6 +1450,7 @@ $("analyzeBtn").onclick = async () => {
       renderHist();
     } catch {}
     renderReport(r, answers, false);
+    resetPhoto();
   } catch (e) {
     stopAnim(); show("s-photo");
     if (e.code === "cancelled" || e.name === "AbortError") return;
