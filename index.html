@@ -326,9 +326,9 @@ const MEAS = [
   { key: "roughness", label: "피부결 거칠기", unit: "", dir: 1, dec: 2, sd: 0.12, concern: "texture",
     how: "볼 피부 밝기의 중간 크기 요철 정도(밝기 대비 %)." },
   { key: "toneUneven", label: "톤 불균일", unit: "%", dir: 1, dec: 2, sd: 0.25, concern: "radiance",
-    how: "이마와 볼에서 전체 조명 기울기를 뺀 뒤 남는 밝기 얼룩의 표준편차(밝기 대비 %)." },
-  { key: "oilPct", label: "번들거림 면적", unit: "%", dir: 1, dec: 1, sd: 0.8, concern: "oiliness",
-    how: "T존(이마·미간·코) 피부 중 빛이 반사돼 하얗게 번들거리는 면적 비율." },
+    how: "이마와 볼에서 전체 조명 기울기를 뺀 뒤 남는 밝기 얼룩의 표준편차(밝기 대비 %). 번들거리는 반사 부분과 그 주변은 빼고 계산해서, 반사광이 톤 얼룩으로 잡히지 않아요." },
+  { key: "oilPct", label: "T존 유분 지수", unit: "%p", dir: 1, dec: 1, sd: 0.8, concern: "oiliness",
+    how: "T존(이마·미간·코)에서 빛이 반사돼 번들거리는 면적 비율에서, 같은 조명을 받는 볼의 번들거림 비율을 뺀 값. 조명이 강하면 얼굴 전체가 반사되지만 피지는 T존에 몰리기 때문에, 그 차이를 유분으로 봐요. 코끝처럼 둥근 부위는 유분이 없어도 반사가 생겨 약간의 기본값이 있어요." },
   { key: "wrinklePct", label: "주름선 비율", unit: "%", dir: 1, dec: 2, sd: 0.4, concern: "wrinkles",
     how: "이마·미간·눈꼬리 피부 중 가는 선 모양의 그늘로 판정된 픽셀 비율." },
   { key: "nasoDL", label: "팔자 그늘 ΔL*", unit: "", dir: 1, dec: 1, sd: 1.0, concern: "firmness",
@@ -338,11 +338,7 @@ const MEAS = [
   { key: "bagDL", label: "눈밑 볼록 깊이 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.8, concern: "eyeBags",
     how: "아래 눈꺼풀에서 볼 쪽으로 내려가며 밝기(L*)를 잰 단면에서, 볼록한 부분의 밝기와 그 아래 그림자 골의 밝기 차이. 볼록함이 없으면 0이에요." },
   { key: "troughDL", label: "눈물고랑 대비 ΔL*", unit: "", dir: 1, dec: 1, sd: 0.8, concern: "tearTrough",
-    how: "눈 앞머리에서 볼 쪽으로 비스듬히 내려가는 선 중 가장 어두운 선을 찾아, 그 선과 양옆 피부의 L* 차이를 잰 값. 전체 조명 기울기는 양옆이 상쇄해요." },
-  { key: "mrd1", label: "MRD1", unit: "mm", dir: -1, dec: 1, sd: 0.3, concern: "upperEyelid",
-    how: "눈동자 중심에서 윗눈꺼풀 가장자리까지의 거리(margin reflex distance 1). 눈꺼풀 처짐 평가에 쓰는 임상 지표로, 보통 4~5mm예요." },
-  { key: "mrd2", label: "MRD2", unit: "mm", dir: 1, dec: 1, sd: 0.3, concern: "lowerEyelid",
-    how: "눈동자 중심에서 아래 눈꺼풀 가장자리까지의 거리(MRD2). 보통 5mm 안팎이고, 크면 아래 흰자가 많이 보여요." }
+    how: "눈 앞머리에서 볼 쪽으로 비스듬히 내려가는 선 중 가장 어두운 선을 찾아, 그 선과 양옆 피부의 L* 차이를 잰 값. 전체 조명 기울기는 양옆이 상쇄해요." }
 ];
 const MEAS_BY = Object.fromEntries(MEAS.map(m => [m.key, m]));
 const MEAS_OF_CONCERN = Object.fromEntries(MEAS.filter(m => m.concern).map(m => [m.concern, m]));
@@ -634,10 +630,10 @@ function boxBlur(src, W, H, r) {
 }
 // ---- 15-concern skin analysis (runs in the browser, no server) ----
 const CONCERNS = [
-  ["surface", "피부 표면", [["spots","잡티"],["redness","붉은기"],["acne","트러블"],["pores","모공"],["texture","피부결"],["radiance","광채"]]],
+  ["surface", "피부 표면", [["spots","잡티"],["redness","붉은기"],["acne","트러블"],["pores","모공"],["texture","피부결"],["radiance","톤 균일도"]]],
   ["balance", "유수분", [["oiliness","유분"],["moisture","수분"]]],
   ["aging", "노화", [["wrinkles","주름"],["firmness","탄력"]]],
-  ["eye", "눈가", [["darkCircles","다크서클"],["eyeBags","눈밑 지방"],["tearTrough","눈물고랑"],["upperEyelid","윗눈꺼풀 처짐"],["lowerEyelid","아래눈꺼풀 처짐"]]]
+  ["eye", "눈가", [["darkCircles","다크서클"],["eyeBags","눈밑 지방"],["tearTrough","눈물고랑"]]]
 ];
 const LABEL = Object.fromEntries(CONCERNS.flatMap(g => g[2]));
 const NOTE15 = {
@@ -646,8 +642,8 @@ const NOTE15 = {
   acne: ["트러블이 거의 보이지 않아요.", "작은 트러블이 몇 개 보여요.", "붉은 트러블이 여러 곳에 보여요."],
   pores: ["모공이 잘 보이지 않아요.", "코와 볼 안쪽 모공이 조금 보여요.", "코와 볼 모공이 넓어 보여요."],
   texture: ["피부결이 매끈한 편이에요.", "볼 쪽 결이 살짝 고르지 않아요.", "요철이 많아 결이 거칠어 보여요."],
-  radiance: ["톤이 균일하고 생기 있어 보여요.", "톤이 약간 고르지 않아요.", "톤이 고르지 않고 칙칙해 보여요."],
-  oiliness: ["유분이 고르게 분포돼 있어요.", "이마와 코에 유분이 조금 몰려 있어요.", "T존 번들거림이 많은 편이에요."],
+  radiance: ["톤이 고르고 맑아 보여요.", "톤이 약간 고르지 않아요.", "톤이 얼룩져 보여요."],
+  oiliness: ["T존 유분이 적은 편이에요.", "볼보다 이마와 코에 유분이 조금 더 있어요.", "볼보다 T존 번들거림이 확실히 많아요."],
   moisture: ["수분감이 충분해 보여요.", "수분이 조금 부족할 수 있어요.", "건조함이 느껴지는 상태예요."],
   wrinkles: ["이마와 눈가가 매끈한 편이에요.", "이마나 눈가에 얕은 주름이 보여요.", "이마와 눈가 주름이 뚜렷한 편이에요."],
   firmness: ["윤곽이 탄탄한 편이에요.", "팔자 주름이나 입꼬리 쪽 처짐이 조금 보여요.", "팔자 주름과 처짐이 뚜렷한 편이에요."],
@@ -903,13 +899,21 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   // 5 texture: medium-scale unevenness on cheeks
   { let t = 0, n = 0; const pix = []; for (let i = 0; i < N; i++) if (cheeks[i] && !isHi(i)) { const v = Math.abs(B1[i] - B4[i]) / Lref; t += v; n++; if (v > 0.03) pix.push(i); }
     raw.texture = t / Math.max(1, n); S.texture = sc(raw.texture, 0.01, 0.032); layers.texture = paint("texture", pix, 150); }
-  // 6 radiance: evenness of tone across forehead and cheeks
+  // shine map: highlights and their surroundings (their glow spreads into the blurred layers)
+  const hiMask = new Float32Array(N); for (let i = 0; i < N; i++) if (face[i] && isHi(i) && L[i] > B24[i] * 1.05) hiMask[i] = 1;
+  const hiNear = boxBlur(hiMask, W, H, 8);
+  // 6 tone evenness: blotchiness of colour-corrected lightness across forehead and cheeks, shine excluded
   { const rm = or("forehead", "cheekR", "cheekL"); let s2 = 0, n = 0; const pix = [];
-    for (let i = 0; i < N; i++) if (rm[i]) { const v = (B8[i] - B24[i]) / Lref; s2 += v * v; n++; if (v < -0.035) pix.push(i); }
+    for (let i = 0; i < N; i++) if (rm[i] && hiNear[i] < 0.01) { const v = (B8[i] - B24[i]) / Lref; s2 += v * v; n++; if (v < -0.035) pix.push(i); }
     const cv = Math.sqrt(s2 / Math.max(1, n)); raw.radiance = cv; S.radiance = sc(cv, 0.018, 0.07); layers.radiance = paint("radiance", pix, 120); }
   // 7 oiliness: specular shine in the T-zone
-  { const pix = []; let n = 0; for (let i = 0; i < N; i++) if (tz[i]) { n++; if (isHi(i) && L[i] > B24[i] * 1.05) pix.push(i); }
-    raw.oiliness = pix.length / Math.max(1, n); S.oiliness = sc(raw.oiliness, 0.01, 0.12); layers.oiliness = paint("oiliness", pix, 220); }
+  // Shine is light reflected off the skin surface. Sebum makes skin reflect more, but so do a strong lamp, sweat or fresh skincare.
+  // The lamp lights the T-zone and the cheeks alike; sebum collects in the T-zone. So oil = T-zone shine minus cheek shine.
+  { const pix = []; let n = 0, cn = 0, ck = 0;
+    for (let i = 0; i < N; i++) { if (tz[i]) { n++; if (hiMask[i]) pix.push(i); } if (cheeks[i]) { cn++; if (hiMask[i]) ck++; } }
+    raw.tShine = pix.length / Math.max(1, n); raw.cShine = ck / Math.max(1, cn); raw.oilIndex = Math.max(0, raw.tShine - raw.cShine); raw.oiliness = raw.tShine;
+    S.oiliness = sc(raw.oilIndex, 0.01, 0.10); layers.oiliness = paint("oiliness", pix, 220);
+    if (raw.cShine > 0.04) cond.push({ msg: `볼까지 넓게 빛이 반사돼요(볼 번들거림 ${(raw.cShine * 100).toFixed(1)}%). 조명이 강하거나 스킨케어를 바른 직후일 수 있어요. 유분은 T존과 볼의 차이로만 판단했고, 수분 점수는 정확도가 낮아요.`, affects: ["oiliness", "moisture"] }); }
   // 8 wrinkles: line-shaped valleys (horizontal on forehead and eye corners, vertical between brows)
   { const fhVisible = count(or("forehead")) / Math.max(1, fhArea);
     if (fhVisible < 0.35) cond.push({ msg: "앞머리나 그림자로 이마가 대부분 가려져 주름은 미간과 눈꼬리만 측정했어요.", affects: ["wrinkles"] });
@@ -972,26 +976,6 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   }
   if (raw.bagDepth == null) S.eyeBags = null;
   if (raw.troughDL == null) S.tearTrough = null;
-  // 12 upper eyelid, 13 lower eyelid: geometry from landmarks
-  const eyeLayer = (key, which) => { const cv = layer(), gx = cv.getContext("2d"); gx.lineWidth = Math.max(1.5, W / 220); gx.strokeStyle = LAYER_COLOR[key]; gx.fillStyle = LAYER_COLOR[key];
-    for (const e of [eyes.R, eyes.L]) {
-      if (e.c) { gx.beginPath(); gx.arc(e.c[0], e.c[1], e.r, 0, 7); gx.stroke(); gx.beginPath(); gx.arc(e.c[0], e.c[1], 2, 0, 7); gx.fill(); }
-      const p = which === "up" ? e.up : e.low; gx.beginPath(); gx.moveTo(p[0] - e.r * 1.4, p[1]); gx.lineTo(p[0] + e.r * 1.4, p[1]); gx.stroke();
-      if (e.c) { gx.setLineDash([3, 3]); gx.beginPath(); gx.moveTo(e.c[0], e.c[1]); gx.lineTo(p[0], p[1]); gx.stroke(); gx.setLineDash([]); }
-      if (which === "low") { gx.beginPath(); gx.moveTo(...e.inner); gx.lineTo(...e.outer); gx.stroke(); }
-    } return cv; };
-  if (eyes) {
-    const avg = f => (f(eyes.R) + f(eyes.L)) / 2;
-    if (eyes.R.mrd1 != null) {
-      raw.upperEyelid = avg(e => e.mrd1); S.upperEyelid = sc(raw.upperEyelid, 0.8, 0.3);
-      raw.lowerEyelid = avg(e => e.mrd2); const tilt = avg(e => e.tilt);
-      S.lowerEyelid = Math.round((sc(raw.lowerEyelid, 0.9, 1.4) + sc(tilt, 5, -5)) / 2);
-    } else {
-      raw.upperEyelid = avg(e => e.aperture); S.upperEyelid = sc(raw.upperEyelid, 0.3, 0.15);
-      raw.lowerEyelid = avg(e => e.tilt); S.lowerEyelid = sc(raw.lowerEyelid, 5, -5);
-    }
-    layers.upperEyelid = eyeLayer("upperEyelid", "up"); layers.lowerEyelid = eyeLayer("lowerEyelid", "low");
-  } else { S.upperEyelid = null; S.lowerEyelid = null; }
   // 14 firmness: nasolabial shadow + mouth-corner droop + age
   const AGE = { "10대":[17,92], "20대 초반":[23,88], "20대 후반":[28,84], "30대":[35,78], "40대":[45,70], "50대 이상":[55,62] }[a.age] || [30,80];
   { const ln = mean(L, or("nasoR", "nasoL")), nl = (Lref - ln) / Lref; raw.firmness = nl;
@@ -1013,8 +997,8 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   if (lm) {
     pose = headPose(lm, IW, IH);
     if (Math.abs(pose.pitch) > 8) cond.push({ msg: pose.pitch > 0
-        ? `카메라가 눈보다 낮은 곳에서 찍혔어요(위아래 ${pose.pitch.toFixed(0)}°). 눈을 내려다보게 돼 윗눈꺼풀이 실제보다 덮여 보이고, 턱과 팔자 부위가 실제보다 도드라져 보여요.`
-        : `카메라가 눈보다 높은 곳에서 찍혔어요(위아래 ${pose.pitch.toFixed(0)}°). 눈 밑과 팔자 부위가 실제보다 덜 보일 수 있어요.`, affects: ["upperEyelid", "lowerEyelid", "firmness", "eyeBags"] });
+        ? `카메라가 눈보다 낮은 곳에서 찍혔어요(위아래 ${pose.pitch.toFixed(0)}°). 턱과 팔자 부위, 눈 밑 그림자가 실제보다 도드라져 보일 수 있어요.`
+        : `카메라가 눈보다 높은 곳에서 찍혔어요(위아래 ${pose.pitch.toFixed(0)}°). 눈 밑과 팔자 부위가 실제보다 덜 보일 수 있어요.`, affects: ["firmness", "eyeBags", "tearTrough"] });
     if (Math.abs(pose.yaw) > 10) cond.push({ msg: `얼굴이 옆으로 ${Math.abs(pose.yaw).toFixed(0)}° 돌아가 있어 왼쪽과 오른쪽 값이 다르게 나올 수 있어요.`, affects: ["darkCircles", "tearTrough", "firmness"] });
     const fh = or("forehead"), fl = count(fh) > 200 ? labL(fh) : labL(or("glabella")), cl = labL(or("chin"));
     if (fl - cl > 8) cond.push({ msg: "빛이 위에서 내려와 눈 밑과 팔자 부위에 그림자가 생겼어요. 다크서클과 팔자 그늘이 실제보다 짙게 나올 수 있어요.", affects: ["darkCircles", "firmness"] });
@@ -1088,7 +1072,6 @@ async function localAnalyze(blob, a, lm, allowFallback) {
   const low2 = [...scored].sort((p, q) => p.score - q.score).slice(0, 2).map(m => m.label);
   let seeDoctor = null;
   if (acneN >= 10) seeDoctor = "붉은 트러블이 여러 개 보여요. 오래가거나 아프다면 피부과 상담을 권해요.";
-  else if (eyes?.R.mrd1 != null && raw.upperEyelid < 0.3) seeDoctor = "윗눈꺼풀이 눈동자를 많이 덮고 있어요. 시야가 답답하게 느껴진다면 안과 상담을 받아 보세요.";
   // ----- defined measurements (units, CIELAB) -----
   const labMean = m => { let sL = 0, sa = 0, sb = 0, n = 0; for (let i = 0; i < N; i++) if (m[i]) { const q = rgb2lab(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]); sL += q[0]; sa += q[1]; sb += q[2]; n++; } return n ? [sL / n, sa / n, sb / n] : [NaN, NaN, NaN]; };
   const labC = labMean(cheeks), labCN = labMean(or("cheekR", "cheekL", "nose"));
@@ -1103,14 +1086,12 @@ async function localAnalyze(blob, a, lm, allowFallback) {
     poreDensity: S.pores == null ? null : raw.poreN / Math.max(1e-6, raw.poreArea * mmPerPx * mmPerPx / 100),
     roughness: S.texture == null ? null : raw.texture * 100,
     toneUneven: raw.radiance * 100,
-    oilPct: raw.oiliness * 100,
+    oilPct: raw.oilIndex * 100,
     wrinklePct: raw.wrinkles * 100,
     nasoDL: labC[0] - Lof("nasoR", "nasoL"),
     dcDL: raw.dcDL,
     bagDL: raw.bagDepth,
-    troughDL: raw.troughDL,
-    mrd1: irisOK ? raw.upperEyelid * 5.85 : null,
-    mrd2: irisOK ? raw.lowerEyelid * 5.85 : null
+    troughDL: raw.troughDL
   };
   for (const k in measures) if (measures[k] != null && !isFinite(measures[k])) measures[k] = null;
   let sr = 0, sg = 0, sbb = 0, nn = 0; for (let i = 0; i < N; i++) if (cheeks[i]) { sr += d[i * 4]; sg += d[i * 4 + 1]; sbb += d[i * 4 + 2]; nn++; }
@@ -1471,22 +1452,20 @@ function buildPrompt(a) {
  "overall": 0~100 정수 (높을수록 건강),
  "skinAge": 정수 (사진에서 보이는 피부 나이 추정치),
  "summary": "2문장 이내 총평",
- "metrics": [  // 정확히 이 15개, 이 순서. score는 0~100, 높을수록 좋은 상태. 사진으로 판단이 어려우면 설문을 근거로 추정하고 note에 그렇게 적으세요
+ "metrics": [  // 정확히 이 13개, 이 순서. score는 0~100, 높을수록 좋은 상태. 사진으로 판단이 어려우면 설문을 근거로 추정하고 note에 그렇게 적으세요
    {"key":"spots","label":"잡티","score":0,"note":"한 문장"},
    {"key":"redness","label":"붉은기","score":0,"note":"한 문장"},
    {"key":"acne","label":"트러블","score":0,"note":"한 문장"},
    {"key":"pores","label":"모공","score":0,"note":"한 문장"},
    {"key":"texture","label":"피부결","score":0,"note":"한 문장"},
-   {"key":"radiance","label":"광채","score":0,"note":"한 문장"},
+   {"key":"radiance","label":"톤 균일도","score":0,"note":"한 문장"},
    {"key":"oiliness","label":"유분","score":0,"note":"한 문장"},
    {"key":"moisture","label":"수분","score":0,"note":"한 문장"},
    {"key":"wrinkles","label":"주름","score":0,"note":"한 문장"},
    {"key":"firmness","label":"탄력","score":0,"note":"한 문장"},
    {"key":"darkCircles","label":"다크서클","score":0,"note":"한 문장"},
    {"key":"eyeBags","label":"눈밑 지방","score":0,"note":"한 문장"},
-   {"key":"tearTrough","label":"눈물고랑","score":0,"note":"한 문장"},
-   {"key":"upperEyelid","label":"윗눈꺼풀 처짐","score":0,"note":"한 문장"},
-   {"key":"lowerEyelid","label":"아래눈꺼풀 처짐","score":0,"note":"한 문장"}
+   {"key":"tearTrough","label":"눈물고랑","score":0,"note":"한 문장"}
  ],
  "zones": [ {"zone":"이마","finding":"한 문장"}, {"zone":"눈가","finding":""}, {"zone":"볼","finding":""}, {"zone":"코·T존","finding":""}, {"zone":"입가·턱","finding":""} ],
  "routine": {
@@ -1635,16 +1614,14 @@ const SAMPLE = {
     {key:"acne", label:"트러블", score:82, note:"턱에 작은 트러블이 하나 보여요."},
     {key:"pores", label:"모공", score:52, note:"코와 볼 안쪽 모공이 넓어 보여요."},
     {key:"texture", label:"피부결", score:66, note:"볼 바깥쪽에 미세 각질이 보여요."},
-    {key:"radiance", label:"광채", score:71, note:"톤이 약간 고르지 않아요."},
+    {key:"radiance", label:"톤 균일도", score:71, note:"톤이 약간 고르지 않아요."},
     {key:"oiliness", label:"유분", score:61, note:"이마와 코에 유분이 몰려 있어요."},
     {key:"moisture", label:"수분", score:64, note:"볼 쪽 수분이 조금 부족해 보여요."},
     {key:"wrinkles", label:"주름", score:78, note:"눈가에 얕은 잔주름이 약간 보여요."},
     {key:"firmness", label:"탄력", score:74, note:"팔자 주름이 옅게 보여요."},
     {key:"darkCircles", label:"다크서클", score:62, note:"눈 밑이 볼보다 조금 어두워요."},
     {key:"eyeBags", label:"눈밑 지방", score:80, note:"눈 밑이 평평한 편이에요."},
-    {key:"tearTrough", label:"눈물고랑", score:72, note:"눈 앞머리 아래가 살짝 꺼져 보여요."},
-    {key:"upperEyelid", label:"윗눈꺼풀 처짐", score:88, note:"눈꺼풀이 눈동자를 거의 가리지 않아요."},
-    {key:"lowerEyelid", label:"아래눈꺼풀 처짐", score:85, note:"아래 눈꺼풀이 탄탄하게 받쳐 주고 있어요."}
+    {key:"tearTrough", label:"눈물고랑", score:72, note:"눈 앞머리 아래가 살짝 꺼져 보여요."}
   ],
   zones: [
     {zone:"이마", finding:"유분이 많고 작은 모공이 보여요."},
